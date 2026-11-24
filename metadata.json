@@ -1,0 +1,6 @@
+{
+  "name": "CDL Prep Master",
+  "description": "Realistic Commercial Driver's License exam prep covering General Knowledge, Air Brakes, and HazMat with DMV-accurate 80% scoring.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

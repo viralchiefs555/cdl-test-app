@@ -1,0 +1,421 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B132B"/>
+      <stop offset="50%" stop-color="#111C3D"/>
+      <stop offset="100%" stop-color="#080D1D"/>
+    </linearGradient>
+
+    <!-- Blueprint Grid Pattern -->
+    <pattern id="cad-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" stroke-width="0.8" opacity="0.6"/>
+      <circle cx="0" cy="0" r="1" fill="#38BDF8" opacity="0.3"/>
+    </pattern>
+
+    <!-- Component Material Gradients -->
+    <linearGradient id="cast-iron" x1="0%" y1="0%" x2="100%" y2="80%">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="50%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+
+    <linearGradient id="machined-steel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#94A3B8"/>
+      <stop offset="50%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+
+    <linearGradient id="copper-winding" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#B45309"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#78350F"/>
+    </linearGradient>
+
+    <linearGradient id="tire-rubber" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#262626"/>
+      <stop offset="50%" stop-color="#171717"/>
+      <stop offset="100%" stop-color="#0A0A0A"/>
+    </linearGradient>
+
+    <linearGradient id="fluid-red" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#DC2626"/>
+      <stop offset="70%" stop-color="#EF4444"/>
+      <stop offset="100%" stop-color="#F87171"/>
+    </linearGradient>
+
+    <linearGradient id="brass-fitting" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FBBF24"/>
+      <stop offset="50%" stop-color="#D97706"/>
+      <stop offset="100%" stop-color="#92400E"/>
+    </linearGradient>
+
+    <filter id="neon-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <filter id="soft-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <style>
+    .component-group { cursor: pointer; transition: transform 0.2s ease, filter 0.2s ease; }
+    .component-group:hover { filter: drop-shadow(0 0 10px #38BDF8); }
+    .component-group:hover .component-outline { stroke: #38BDF8; stroke-width: 2.5; }
+    .component-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11px; font-weight: 700; fill: #F8FAFC; letter-spacing: 0.5px; }
+    .badge-bg { fill: #0F172A; stroke: #38BDF8; stroke-width: 1.2; rx: 4; }
+    .tech-text { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; fill: #64748B; }
+  </style>
+
+  <!-- Technical Canvas Background -->
+  <rect width="1000" height="800" fill="url(#bg-grad)"/>
+  <rect width="1000" height="800" fill="url(#cad-grid)"/>
+
+  <!-- Blueprint Header / Guide Overlay -->
+  <g id="schematic-header" opacity="0.9">
+    <text x="35" y="42" fill="#38BDF8" font-family="sans-serif" font-size="18" font-weight="900" letter-spacing="1">CDL CLASS A/B • ENGINE COMPARTMENT &amp; FRONT AXLE</text>
+    <text x="35" y="62" class="tech-text">FMCSA SECTION 10.2 TECHNICAL SCHEMATIC • INTERACTIVE TAP TARGETS ENABLED</text>
+    <line x1="35" y1="72" x2="965" y2="72" stroke="#1E293B" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 0. CHASSIS FRAME RAIL & BACKGROUND STRUCTURAL SUPPORT    -->
+  <!-- ======================================================== -->
+  <g id="frame-rail" filter="url(#soft-shadow)">
+    <!-- Heavy Truck C-Channel Frame Rail (Driver Side) -->
+    <path d="M 60 410 L 940 410 L 940 470 L 60 470 Z" fill="url(#cast-iron)" stroke="#475569" stroke-width="2"/>
+    <path d="M 60 410 L 940 410 L 940 418 L 60 418 Z" fill="#64748B"/>
+    <path d="M 60 462 L 940 462 L 940 470 L 60 470 Z" fill="#1E293B"/>
+    <!-- Frame Rivets & Flange Holes -->
+    <circle cx="120" cy="440" r="5" fill="#0F172A" stroke="#64748B" stroke-width="2"/>
+    <circle cx="210" cy="440" r="5" fill="#0F172A" stroke="#64748B" stroke-width="2"/>
+    <circle cx="480" cy="440" r="5" fill="#0F172A" stroke="#64748B" stroke-width="2"/>
+    <circle cx="560" cy="440" r="5" fill="#0F172A" stroke="#64748B" stroke-width="2"/>
+    <circle cx="890" cy="440" r="5" fill="#0F172A" stroke="#64748B" stroke-width="2"/>
+  </g>
+
+  <!-- Heavy Diesel Engine Block Silhouette (Background) -->
+  <g id="engine-block" opacity="0.85">
+    <!-- Engine Head & Valve Cover -->
+    <path d="M 310 110 L 730 110 L 750 395 L 300 395 Z" fill="#1A2238" stroke="#334155" stroke-width="2"/>
+    <!-- Cylinder Head Ribs -->
+    <line x1="330" y1="140" x2="710" y2="140" stroke="#0F172A" stroke-width="4"/>
+    <line x1="325" y1="180" x2="715" y2="180" stroke="#0F172A" stroke-width="4"/>
+    <line x1="320" y1="230" x2="720" y2="230" stroke="#0F172A" stroke-width="4"/>
+    <line x1="315" y1="285" x2="725" y2="285" stroke="#0F172A" stroke-width="4"/>
+    <line x1="310" y1="340" x2="735" y2="340" stroke="#0F172A" stroke-width="4"/>
+    <!-- Oil Pan Basin Below Frame -->
+    <path d="M 360 470 L 660 470 L 630 520 L 390 520 Z" fill="#111827" stroke="#334155" stroke-width="2"/>
+  </g>
+
+  <!-- Serpentine Belt Assembly (Connects Water Pump, Alternator & Crank) -->
+  <g id="serpentine-belt" opacity="0.7">
+    <path d="M 680 190 L 510 260 L 690 350 L 500 365 Z" fill="none" stroke="#0F172A" stroke-width="12" stroke-linejoin="round"/>
+    <path d="M 680 190 L 510 260 L 690 350 L 500 365 Z" fill="none" stroke="#1F2937" stroke-width="8" stroke-dasharray="4,2" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 1. ALTERNATOR                                            -->
+  <!-- ======================================================== -->
+  <g id="alternator" class="component-group" filter="url(#soft-shadow)">
+    <!-- Alternator Main Body -->
+    <circle cx="685" cy="185" r="54" fill="url(#cast-iron)" stroke="#64748B" stroke-width="2" class="component-outline"/>
+    <!-- Stator Cooling Vents & Copper Windings -->
+    <circle cx="685" cy="185" r="42" fill="#0F172A" stroke="#475569" stroke-width="1"/>
+    <g opacity="0.9">
+      <path d="M 660 160 L 675 160 L 670 210 L 655 210 Z" fill="url(#copper-winding)"/>
+      <path d="M 680 155 L 695 155 L 690 215 L 675 215 Z" fill="url(#copper-winding)"/>
+      <path d="M 700 160 L 715 160 L 710 210 L 695 210 Z" fill="url(#copper-winding)"/>
+    </g>
+    <!-- Pulley Face & Shaft Nut -->
+    <circle cx="685" cy="185" r="22" fill="url(#machined-steel)" stroke="#0F172A" stroke-width="2"/>
+    <polygon points="685,175 693,180 693,190 685,195 677,190 677,180" fill="#CBD5E1"/>
+    <!-- Electrical Wires / Output Terminal -->
+    <path d="M 725 155 Q 755 140 780 165" fill="none" stroke="#DC2626" stroke-width="5" stroke-linecap="round"/>
+    <path d="M 730 165 Q 760 155 775 180" fill="none" stroke="#1E293B" stroke-width="4" stroke-linecap="round"/>
+    <!-- Secure Mounting Bracket & Bolt -->
+    <rect x="635" y="215" width="20" height="24" fill="url(#machined-steel)" rx="3"/>
+    <circle cx="645" cy="227" r="4" fill="#0F172A" stroke="#94A3B8" stroke-width="1.5"/>
+
+    <!-- Interactive Component Label Badge -->
+    <rect x="745" y="115" width="135" height="24" class="badge-bg"/>
+    <text x="755" y="131" class="component-label">⚡ ALTERNATOR</text>
+    <polyline points="745,127 715,145 698,160" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 2. WATER PUMP                                            -->
+  <!-- ======================================================== -->
+  <g id="water-pump" class="component-group" filter="url(#soft-shadow)">
+    <!-- Water Pump Volute / Housing -->
+    <path d="M 455 240 Q 525 215 550 265 Q 565 315 515 330 Q 450 340 445 285 Z" fill="url(#cast-iron)" stroke="#64748B" stroke-width="2" class="component-outline"/>
+    <!-- Pump Pulley Hub -->
+    <circle cx="495" cy="275" r="28" fill="url(#machined-steel)" stroke="#334155" stroke-width="2"/>
+    <circle cx="495" cy="275" r="14" fill="#1E293B"/>
+    <!-- Pulley Mounting Bolts (4) -->
+    <circle cx="495" cy="264" r="2.5" fill="#E2E8F0"/>
+    <circle cx="495" cy="286" r="2.5" fill="#E2E8F0"/>
+    <circle cx="484" cy="275" r="2.5" fill="#E2E8F0"/>
+    <circle cx="506" cy="275" r="2.5" fill="#E2E8F0"/>
+    <!-- Lower Radiator Hose Snout -->
+    <path d="M 445 295 L 400 315 L 390 280 L 448 270 Z" fill="#1E293B" stroke="#475569" stroke-width="2"/>
+    <!-- Hose Clamp -->
+    <rect x="412" y="282" width="6" height="30" fill="#94A3B8" rx="1"/>
+
+    <!-- Label Badge -->
+    <rect x="365" y="180" width="140" height="24" class="badge-bg"/>
+    <text x="375" y="196" class="component-label">💧 WATER PUMP</text>
+    <polyline points="435,204 460,230 480,255" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 3. POWER STEERING RESERVOIR                              -->
+  <!-- ======================================================== -->
+  <g id="power-steering-reservoir" class="component-group" filter="url(#soft-shadow)">
+    <!-- Fluid Canister Reservoir Body -->
+    <rect x="180" y="150" width="85" height="120" rx="10" fill="#1E293B" stroke="#64748B" stroke-width="2" class="component-outline"/>
+    <!-- Translucent Fluid Sight Window -->
+    <rect x="195" y="185" width="55" height="70" rx="4" fill="#0F172A" stroke="#334155" stroke-width="1.5"/>
+    <!-- Hydraulic Fluid Level (Hot/Cold Full Range) -->
+    <rect x="198" y="205" width="49" height="47" rx="2" fill="url(#fluid-red)" opacity="0.85"/>
+    <line x1="195" y1="205" x2="210" y2="205" stroke="#FFFFFF" stroke-width="1.5"/>
+    <text x="215" y="208" fill="#F8FAFC" font-size="7" font-family="sans-serif" font-weight="bold">COLD FULL</text>
+    <line x1="195" y1="225" x2="208" y2="225" stroke="#FCA5A5" stroke-width="1"/>
+    <text x="212" y="228" fill="#FCA5A5" font-size="7" font-family="sans-serif">ADD</text>
+    <!-- Reservoir Cap & Dipstick Top -->
+    <rect x="205" y="132" width="35" height="18" rx="4" fill="#0F172A" stroke="#94A3B8" stroke-width="2"/>
+    <line x1="210" y1="135" x2="210" y2="147" stroke="#64748B" stroke-width="1.5"/>
+    <line x1="222" y1="135" x2="222" y2="147" stroke="#64748B" stroke-width="1.5"/>
+    <line x1="234" y1="135" x2="234" y2="147" stroke="#64748B" stroke-width="1.5"/>
+    <!-- Feed Line to Steering Box -->
+    <path d="M 220 270 Q 210 320 185 410" fill="none" stroke="#0F172A" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 220 270 Q 210 320 185 410" fill="none" stroke="#334155" stroke-width="4" stroke-linecap="round"/>
+
+    <!-- Label Badge -->
+    <rect x="75" y="95" width="185" height="24" class="badge-bg"/>
+    <text x="85" y="111" class="component-label">🛢️ POWER STEERING FLUID</text>
+    <polyline points="170,119 195,135 210,145" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 4. ENGINE OIL DIPSTICK                                   -->
+  <!-- ======================================================== -->
+  <g id="dipstick" class="component-group" filter="url(#soft-shadow)">
+    <!-- Dipstick Metal Guide Tube Entering Block -->
+    <path d="M 330 185 Q 315 270 345 350 Q 365 420 375 480" fill="none" stroke="#94A3B8" stroke-width="5" stroke-linecap="round"/>
+    <path d="M 330 185 Q 315 270 345 350 Q 365 420 375 480" fill="none" stroke="#475569" stroke-width="2" stroke-linecap="round"/>
+    <!-- High-Visibility Yellow Pull Loop / Handle -->
+    <circle cx="330" cy="170" r="14" fill="#EAB308" stroke="#CA8A04" stroke-width="3" class="component-outline"/>
+    <circle cx="330" cy="170" r="6" fill="#0B132B"/>
+    <!-- Tube Collar -->
+    <rect x="324" y="184" width="12" height="8" rx="2" fill="#EAB308"/>
+
+    <!-- Label Badge -->
+    <rect x="235" y="295" width="120" height="24" class="badge-bg"/>
+    <text x="245" y="311" class="component-label">📍 OIL DIPSTICK</text>
+    <polyline points="295,295 315,245 325,190" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 5. AIR COMPRESSOR                                        -->
+  <!-- ======================================================== -->
+  <g id="air-compressor" class="component-group" filter="url(#soft-shadow)">
+    <!-- Compressor Main Cast Crankcase & Cylinder -->
+    <rect x="580" y="260" width="75" height="110" rx="8" fill="url(#cast-iron)" stroke="#64748B" stroke-width="2" class="component-outline"/>
+    <!-- Cooling Fins -->
+    <line x1="575" y1="280" x2="660" y2="280" stroke="#94A3B8" stroke-width="3"/>
+    <line x1="575" y1="295" x2="660" y2="295" stroke="#94A3B8" stroke-width="3"/>
+    <line x1="575" y1="310" x2="660" y2="310" stroke="#94A3B8" stroke-width="3"/>
+    <line x1="575" y1="325" x2="660" y2="325" stroke="#94A3B8" stroke-width="3"/>
+    <!-- Unloader / Governor Valve Block -->
+    <rect x="640" y="270" width="22" height="35" rx="3" fill="url(#machined-steel)" stroke="#334155" stroke-width="1.5"/>
+    <circle cx="651" cy="282" r="3" fill="#D97706"/>
+    <!-- High-Pressure Stainless Discharge Air Line -->
+    <path d="M 645 260 Q 690 230 760 250 Q 820 270 850 320" fill="none" stroke="url(#machined-steel)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M 645 260 Q 690 230 760 250 Q 820 270 850 320" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-dasharray="3,3" stroke-linecap="round"/>
+    <!-- Brass Fitting Nuts -->
+    <polygon points="636,258 644,252 652,258 652,266 644,272 636,266" fill="url(#brass-fitting)"/>
+
+    <!-- Label Badge -->
+    <rect x="705" y="325" width="160" height="24" class="badge-bg"/>
+    <text x="715" y="341" class="component-label">💨 AIR COMPRESSOR</text>
+    <polyline points="705,337 665,330 635,320" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 6. STEERING GEAR BOX                                     -->
+  <!-- ======================================================== -->
+  <g id="steering-gear-box" class="component-group" filter="url(#soft-shadow)">
+    <!-- Steering Shaft / Rag Joint Input from Cab -->
+    <path d="M 140 330 L 175 405" stroke="#64748B" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="160" cy="370" r="10" fill="#334155" stroke="#94A3B8" stroke-width="2"/>
+    <!-- Heavy Cast Steering Box Body Mounted to Frame Rail -->
+    <path d="M 155 400 L 225 395 L 235 480 L 165 485 Z" fill="url(#cast-iron)" stroke="#64748B" stroke-width="2" class="component-outline"/>
+    <!-- Frame Mount Grade-8 Flange Bolts (3 Primary Bolts) -->
+    <circle cx="175" cy="415" r="5" fill="#CBD5E1" stroke="#0F172A" stroke-width="2"/>
+    <circle cx="215" cy="415" r="5" fill="#CBD5E1" stroke="#0F172A" stroke-width="2"/>
+    <circle cx="180" cy="465" r="5" fill="#CBD5E1" stroke="#0F172A" stroke-width="2"/>
+    <!-- Sector Shaft Housing Seal Cover -->
+    <circle cx="200" cy="455" r="18" fill="#1E293B" stroke="#475569" stroke-width="1.5"/>
+
+    <!-- Label Badge -->
+    <rect x="45" y="360" width="165" height="24" class="badge-bg"/>
+    <text x="55" y="376" class="component-label">⚙️ STEERING GEAR BOX</text>
+    <polyline points="150,384 175,400 188,430" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 7. PITMAN ARM                                            -->
+  <!-- ======================================================== -->
+  <g id="pitman-arm" class="component-group" filter="url(#soft-shadow)">
+    <!-- Forged Steel Pitman Arm Connected to Sector Shaft -->
+    <path d="M 200 455 L 180 565 L 205 575 L 220 460 Z" fill="url(#machined-steel)" stroke="#475569" stroke-width="2" class="component-outline"/>
+    <!-- Castle Nut & Cotter Pin (Top Spline Attachment) -->
+    <circle cx="205" cy="458" r="8" fill="#94A3B8" stroke="#1E293B" stroke-width="1.5"/>
+    <!-- Lower Ball Joint Eyelet -->
+    <circle cx="192" cy="570" r="12" fill="#334155" stroke="#94A3B8" stroke-width="2"/>
+    <!-- Cotter Pin & Castle Crown Detail -->
+    <line x1="185" y1="570" x2="200" y2="570" stroke="#F59E0B" stroke-width="2"/>
+
+    <!-- Label Badge -->
+    <rect x="65" y="520" width="130" height="24" class="badge-bg"/>
+    <text x="75" y="536" class="component-label">🦾 PITMAN ARM</text>
+    <polyline points="150,544 175,550 188,560" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 8. DRAG LINK                                             -->
+  <!-- ======================================================== -->
+  <g id="drag-link" class="component-group" filter="url(#soft-shadow)">
+    <!-- Solid Steel Drag Link Rod Heading Toward Axle Knuckle -->
+    <path d="M 195 570 L 375 605" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+    <path d="M 195 570 L 375 605" stroke="url(#machined-steel)" stroke-width="10" stroke-linecap="round" class="component-outline"/>
+    <!-- Ball Sockets & Threaded Adjusting Sleeves -->
+    <rect x="225" y="567" width="22" height="15" rx="3" fill="#475569" stroke="#CBD5E1" stroke-width="1" transform="rotate(11 236 574)"/>
+    <rect x="330" y="588" width="22" height="15" rx="3" fill="#475569" stroke="#CBD5E1" stroke-width="1" transform="rotate(11 341 595)"/>
+    <!-- Knuckle Tie-In Castle Nut & Cotter Pin -->
+    <circle cx="375" cy="605" r="10" fill="#334155" stroke="#94A3B8" stroke-width="2"/>
+    <line x1="368" y1="605" x2="382" y2="605" stroke="#F59E0B" stroke-width="2"/>
+
+    <!-- Label Badge -->
+    <rect x="225" y="635" width="115" height="24" class="badge-bg"/>
+    <text x="235" y="651" class="component-label">🔗 DRAG LINK</text>
+    <polyline points="280,635 285,610 290,590" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- Heavy Drop-Forged I-Beam Front Axle (Reference Silhouette) -->
+  <g id="front-axle-beam" opacity="0.8">
+    <path d="M 100 660 L 920 660 L 920 685 L 100 685 Z" fill="#1E293B" stroke="#475569" stroke-width="2"/>
+    <rect x="100" y="668" width="820" height="9" fill="#0F172A"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 9. LEAF SPRINGS & SUSPENSION                             -->
+  <!-- ======================================================== -->
+  <g id="leaf-springs" class="component-group" filter="url(#soft-shadow)">
+    <!-- Multi-Leaf Spring Pack Stack -->
+    <!-- Leaf 1 (Main Leaf with Eye Hangers) -->
+    <path d="M 320 615 Q 430 655 540 615" fill="none" stroke="url(#machined-steel)" stroke-width="9" stroke-linecap="round" class="component-outline"/>
+    <!-- Leaf 2 -->
+    <path d="M 345 627 Q 430 660 515 627" fill="none" stroke="#475569" stroke-width="8" stroke-linecap="round"/>
+    <!-- Leaf 3 -->
+    <path d="M 370 638 Q 430 664 490 638" fill="none" stroke="#334155" stroke-width="7" stroke-linecap="round"/>
+    <!-- Front Spring Hanger & Bushing -->
+    <path d="M 305 570 L 335 570 L 328 620 L 312 620 Z" fill="url(#cast-iron)" stroke="#64748B" stroke-width="1.5"/>
+    <circle cx="320" cy="615" r="7" fill="#CBD5E1" stroke="#0F172A" stroke-width="2"/>
+    <!-- Rear Spring Shackle -->
+    <rect x="532" y="575" width="14" height="48" rx="3" fill="#334155" stroke="#94A3B8" stroke-width="1.5"/>
+    <circle cx="539" cy="615" r="6" fill="#CBD5E1" stroke="#0F172A" stroke-width="2"/>
+    <!-- Heavy Duty Dual U-Bolts Clamping Spring Pack to Axle -->
+    <path d="M 412 610 L 412 675" stroke="#CBD5E1" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 448 610 L 448 675" stroke="#CBD5E1" stroke-width="6" stroke-linecap="round"/>
+    <!-- U-Bolt Nuts & Base Plate -->
+    <rect x="404" y="670" width="16" height="8" rx="1" fill="#E2E8F0"/>
+    <rect x="440" y="670" width="16" height="8" rx="1" fill="#E2E8F0"/>
+    <rect x="398" y="650" width="64" height="12" rx="2" fill="#1E293B" stroke="#94A3B8" stroke-width="1"/>
+    <!-- Hydraulic Shock Absorber -->
+    <path d="M 480 500 L 450 630" stroke="#0F172A" stroke-width="18" stroke-linecap="round"/>
+    <path d="M 480 500 L 450 630" stroke="#1E293B" stroke-width="14" stroke-linecap="round"/>
+    <path d="M 480 500 L 465 565" stroke="url(#machined-steel)" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="480" cy="500" r="7" fill="#CBD5E1" stroke="#0F172A" stroke-width="2"/>
+
+    <!-- Label Badge -->
+    <rect x="360" y="700" width="170" height="24" class="badge-bg"/>
+    <text x="370" y="716" class="component-label">🍃 LEAF SPRINGS &amp; U-BOLTS</text>
+    <polyline points="430,700 430,670 430,645" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 10. BRAKE CHAMBER, SLACK ADJUSTER & PUSHROD              -->
+  <!-- ======================================================== -->
+  <g id="brake-chamber" class="component-group" filter="url(#soft-shadow)">
+    <!-- Round Air Brake Service/Spring Chamber Housing -->
+    <ellipse cx="610" cy="575" rx="38" ry="32" fill="url(#cast-iron)" stroke="#64748B" stroke-width="2" class="component-outline"/>
+    <!-- Center Clamp Band -->
+    <ellipse cx="610" cy="575" rx="40" ry="8" fill="none" stroke="#E2E8F0" stroke-width="3"/>
+    <rect x="646" y="571" width="8" height="8" rx="1" fill="#CBD5E1"/>
+    <!-- Air Delivery Hose & Brass Fitting -->
+    <path d="M 610 545 Q 630 500 680 490" fill="none" stroke="#0F172A" stroke-width="7" stroke-linecap="round"/>
+    <path d="M 610 545 Q 630 500 680 490" fill="none" stroke="#38BDF8" stroke-width="3" stroke-linecap="round"/>
+    <!-- Steel Pushrod Emerging from Chamber -->
+    <line x1="575" y1="585" x2="520" y2="605" stroke="url(#machined-steel)" stroke-width="7" stroke-linecap="round"/>
+    <!-- Clevis Pin & Cotter Pin -->
+    <rect x="515" y="598" width="12" height="15" rx="2" fill="#94A3B8" stroke="#1E293B" stroke-width="1"/>
+    <circle cx="521" cy="605" r="3" fill="#F59E0B"/>
+    <!-- Manual Slack Adjuster Arm -->
+    <path d="M 521 605 L 535 660" stroke="#334155" stroke-width="12" stroke-linecap="round"/>
+    <path d="M 521 605 L 535 660" stroke="url(#machined-steel)" stroke-width="8" stroke-linecap="round"/>
+    <!-- Hex Adjusting Nut (Max 1 inch manual pull check) -->
+    <polygon points="535,662 541,659 547,662 547,668 541,671 535,668" fill="#F59E0B"/>
+
+    <!-- Label Badge -->
+    <rect x="635" y="605" width="180" height="24" class="badge-bg"/>
+    <text x="645" y="621" class="component-label">🛑 BRAKE CHAMBER &amp; SLACK</text>
+    <polyline points="635,617 590,610 575,595" fill="none" stroke="#38BDF8" stroke-width="1.5"/>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- 11. FRONT STEER TIRE & WHEEL ASSEMBLY                    -->
+  <!-- ======================================================== -->
+  <g id="steer-tire" class="component-group" filter="url(#soft-shadow)">
+    <!-- Outer Heavy Tire Tread & Sidewall Profile -->
+    <rect x="800" y="440" width="155" height="310" rx="32" fill="url(#tire-rubber)" stroke="#404040" stroke-width="3" class="component-outline"/>
+    <!-- Deep Steer Rib Treads (Minimum 4/32" FMCSA Requirement) -->
+    <line x1="820" y1="455" x2="820" y2="735" stroke="#000000" stroke-width="5" stroke-dasharray="14,6"/>
+    <line x1="835" y1="450" x2="835" y2="740" stroke="#000000" stroke-width="6" stroke-dasharray="16,8"/>
+    <line x1="850" y1="450" x2="850" y2="740" stroke="#000000" stroke-width="5" stroke-dasharray="14,6"/>
+    <!-- Outer Sidewall ABC Check Zone (No Abrasions, Bulges, Cuts) -->
+    <path d="M 870 470 Q 890 595 870 720" fill="none" stroke="#262626" stroke-width="16" stroke-linecap="round"/>
+    <!-- Heavy Commercial Steel/Aluminum Wheel Rim -->
+    <rect x="880" y="490" width="60" height="210" rx="14" fill="url(#machined-steel)" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="895" y="515" width="35" height="160" rx="10" fill="#0F172A" stroke="#334155" stroke-width="2"/>
+    <!-- Rim Hand Holes for Heat Dissipation -->
+    <ellipse cx="912" cy="535" rx="8" ry="12" fill="#1E293B"/>
+    <ellipse cx="912" cy="655" rx="8" ry="12" fill="#1E293B"/>
+    <!-- Oil Hub Seal & Sight Glass (Adequate Oil Level Check) -->
+    <circle cx="912" cy="595" r="22" fill="#1E293B" stroke="#E2E8F0" stroke-width="2"/>
+    <circle cx="912" cy="595" r="14" fill="#0284C7" opacity="0.6"/>
+    <circle cx="912" cy="595" r="5" fill="#EF4444"/>
+    <!-- 10 Heavy Lug Nuts (Star Pattern with No Rust Trails) -->
+    <circle cx="898" cy="570" r="3.5" fill="#E2E8F0" stroke="#0F172A" stroke-width="1"/>
+    <circle cx="926" cy="570" r="3.5" fill="#E2E8F0" stroke="#0F172A" stroke-width="1"/>
+    <circle cx="898" cy="620" r="3.5" fill="#E2E8F0" stroke="#0F172A" stroke-width="1"/>
+    <circle cx="926" cy="620" r="3.5" fill="#E2E8F0" stroke="#0F172A" stroke-width="1"/>
+    <circle cx="890" cy="595" r="3.5" fill="#E2E8F0" stroke="#0F172A" stroke-width="1"/>
+    <circle cx="934" cy="595" r="3.5" fill="#E2E8F0" stroke="#0F172A" stroke-width="1"/>
+    <!-- Brass Tire Valve Stem & Cap -->
+    <rect x="874" y="560" width="10" height="4" fill="url(#brass-fitting)"/>
+
+    <!-- Label Badge -->
+    <rect x="795" y="745" width="180" height="24" class="badge-bg"/>
+    <text x="805" y="761" class="component-label">🛞 STEER TIRE (4/32" ABC)</text>
+  </g>
+
+  <!-- Legend & FMCSA Inspection Helper Footnote -->
+  <g id="footer-hud" opacity="0.85">
+    <rect x="35" y="750" width="360" height="28" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
+    <text x="45" y="768" class="tech-text">🟢 TAPPABLE TARGETS: 11 MANDATORY INSPECTION POINTS</text>
+  </g>
+</svg>
