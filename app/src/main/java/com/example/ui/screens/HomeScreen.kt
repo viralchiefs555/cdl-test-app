@@ -1203,7 +1203,7 @@ fun PreTripInspectionHomeCard(
                             color = Color(0xFF38BDF8)
                         ) {
                             Text(
-                                text = "2D / 3D",
+                                text = "3D",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF0F172A),
@@ -1212,7 +1212,7 @@ fun PreTripInspectionHomeCard(
                         }
                     }
                     Text(
-                        text = "Interactive vehicle zones & dynamic Air Brake test",
+                        text = "Interactive 3D tractor-trailer",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.White.copy(alpha = 0.7f)
                     )
@@ -1222,7 +1222,7 @@ fun PreTripInspectionHomeCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Inspect Engine, Front Axle, Coupling, and In-Cab points with Quiz & Verbal Recitation modes. Experience the 4-step dynamic air brake leak simulator.",
+                text = "Explore every inspection point on a 3D truck, practice finding parts, and take a full pre-trip test in CDL order.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.9f)
             )
@@ -1248,7 +1248,7 @@ fun PreTripInspectionHomeCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Launch Pre-Trip Inspection Simulator",
+                    text = "Launch 3D Pre-Trip Inspection",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
                 )
