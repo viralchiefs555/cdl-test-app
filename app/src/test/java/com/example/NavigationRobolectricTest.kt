@@ -50,7 +50,7 @@ class NavigationRobolectricTest {
         composeTestRule.onNode(hasScrollAction()).performScrollToNode(hasTestTag("pretrip_home_button"))
         composeTestRule.onNodeWithTag("pretrip_home_button").performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("3D Pre-Trip Test").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Pre-Trip Inspection").assertIsDisplayed()
         composeTestRule.onNodeWithContentDescription("Back").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("CDL Prep Master").assertIsDisplayed()

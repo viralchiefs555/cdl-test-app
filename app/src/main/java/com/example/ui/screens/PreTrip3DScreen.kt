@@ -45,7 +45,7 @@ private fun mimeFor(path: String): String = when (path.substringAfterLast('.', "
 }
 
 /**
- * Full-screen 3D tractor-trailer with Explore, Find it and Test modes.
+ * Full-screen 3D tractor-trailer with Find it and Test modes. The camera is moved only by the app.
  * three.js is bundled in assets/pretrip3d/three, so this works offline.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +56,7 @@ fun PreTrip3DScreen(onBack: () -> Unit) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text("3D Pre-Trip Test") },
+                title = { Text("Pre-Trip Inspection") },
                 navigationIcon = {
                     IconButton(
                         onClick = onBack,
