@@ -116,7 +116,7 @@ ul.parts li button[aria-current=true]{background:var(--part-active)}
 .miss{border-left:4px solid var(--bad);padding:8px 10px;margin-top:8px;background:var(--soft);border-radius:0 8px 8px 0}
 .miss b{display:block;font-size:15px}.miss p{margin:2px 0 0;font-size:14px;color:var(--muted)}
 .kbd{font-size:13px;color:var(--muted);margin-top:10px}
-@media(max-width:860px){main{grid-template-columns:1fr;grid-template-rows:40vh minmax(0,1fr)}aside{border-left:0;border-top:1px solid var(--line)}#view{min-height:0}.kbd{display:none}}
+@media(max-width:860px){html,body{height:auto;min-height:100%}body{display:block}main{display:block}#view{position:sticky;top:0;z-index:1;height:max(300px,42vh);min-height:300px}#tRun,#tDone{scroll-margin-top:calc(max(300px,42vh) + 8px)}aside{border-left:0;border-top:1px solid var(--line);overflow:visible}.kbd{display:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -189,6 +189,12 @@ ul.parts li button[aria-current=true]{background:var(--part-active)}
 </main>
 <script>
 (function () {
+  function report(msg) {
+    const el = document.getElementById("status");
+    if (el) el.textContent = msg + " [" + window.innerWidth + "x" + window.innerHeight + "]";
+  }
+  window.addEventListener("error", (e) => report("Error: " + (e.message || "script error")));
+  window.addEventListener("unhandledrejection", (e) => report("Error: " + ((e.reason && e.reason.message) || e.reason)));
   const ZONES = ["Engine Compartment","Front of Vehicle","Lights & Reflectors","Steering","Front Suspension","Front Brakes","Front Wheels","Side of Vehicle","Drive Axles","Drive Axle Suspension","Drive Axle Brakes","Drive Axle Wheels","Rear of Tractor","Coupling System","Trailer Side","Trailer Suspension","Trailer Brakes","Trailer Wheels","Trailer Rear"];
   const ZVIEW = {"Engine Compartment":[0.6,0.8,0.9],"Front of Vehicle":[1,0.45,0.4],"Steering":[0.9,0.3,0.8],"Front Suspension":[0.6,0.2,1],"Front Brakes":[0.6,0.2,1],"Front Wheels":[0.3,0.25,1],"Side of Vehicle":[0.25,0.4,1],"Drive Axles":[0.3,0.15,1],"Drive Axle Suspension":[0.3,0.15,1],"Drive Axle Brakes":[0.3,0.15,1],"Drive Axle Wheels":[0.3,0.25,1],"Rear of Tractor":[-1,0.35,0.6],"Coupling System":[-0.5,0.55,0.9],"Trailer Side":[0.3,0.4,1],"Trailer Suspension":[0.3,0.15,1],"Trailer Brakes":[0.3,0.15,1],"Trailer Wheels":[0.3,0.25,1],"Trailer Rear":[-1,0.35,0.5]};
   const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -391,6 +397,7 @@ ul.parts li button[aria-current=true]{background:var(--part-active)}
     T.opts = kind === "name" ? nameOptions(p) : checkOptions(p);
     $("tOpts").innerHTML = T.opts.map((o, i) => `<button type="button" data-i="${i}"><b>${i + 1}</b><span>${esc(o.t)}</span></button>`).join("");
     $("tFb").innerHTML = ""; $("tNext").hidden = true;
+    if (window.innerWidth <= 860 && $("tRun").scrollIntoView) $("tRun").scrollIntoView({ block: "start" });
   }
   function pickAnswer(i) {
     if (!T.on || T.answered || !T.opts[i]) return;
@@ -539,25 +546,22 @@ ul.parts li button[aria-current=true]{background:var(--part-active)}
   }
 
   async function importThreeBundle() {
-    const bases = [
-      "https://cdn.jsdelivr.net/npm/three@0.170.0",
-      "https://unpkg.com/three@0.170.0"
+    const cdn = "https://cdn.jsdelivr.net/npm/three@0.170.0";
+    const sources = [
+      // bundled in app/src/main/assets/pretrip3d/three (works offline)
+      { three: "./three/build/three.module.min.js", gltf: "./three/examples/jsm/loaders/GLTFLoader.js",
+        orbit: "./three/examples/jsm/controls/OrbitControls.js", env: "./three/examples/jsm/environments/RoomEnvironment.js" },
+      // fallback: jsDelivr's +esm builds resolve the "three" import on their own
+      { three: cdn + "/+esm", gltf: cdn + "/examples/jsm/loaders/GLTFLoader.js/+esm",
+        orbit: cdn + "/examples/jsm/controls/OrbitControls.js/+esm", env: cdn + "/examples/jsm/environments/RoomEnvironment.js/+esm" }
     ];
     let lastErr = null;
-    for (const base of bases) {
+    for (const src of sources) {
       try {
         const [threeMod, gltfMod, orbitMod, envMod] = await Promise.all([
-          import(`${base}/build/three.module.js`),
-          import(`${base}/examples/jsm/loaders/GLTFLoader.js`),
-          import(`${base}/examples/jsm/controls/OrbitControls.js`),
-          import(`${base}/examples/jsm/environments/RoomEnvironment.js`)
+          import(src.three), import(src.gltf), import(src.orbit), import(src.env)
         ]);
-        return {
-          THREE: threeMod,
-          GLTFLoader: gltfMod.GLTFLoader,
-          OrbitControls: orbitMod.OrbitControls,
-          RoomEnvironment: envMod.RoomEnvironment
-        };
+        return { THREE: threeMod, GLTFLoader: gltfMod.GLTFLoader, OrbitControls: orbitMod.OrbitControls, RoomEnvironment: envMod.RoomEnvironment };
       } catch (e) {
         lastErr = e;
       }
@@ -693,7 +697,7 @@ ul.parts li button[aria-current=true]{background:var(--part-active)}
         }, reject);
       });
     } catch (e) {
-      $("status").textContent = "3D preview unavailable (" + (e && e.message ? e.message : "check network/WebGL") + ") — checklist tabs ready";
+      report("3D view unavailable: " + (e && e.message ? e.message : "WebGL or 3D library missing") + " (checklist tabs still work)");
     }
   }
 

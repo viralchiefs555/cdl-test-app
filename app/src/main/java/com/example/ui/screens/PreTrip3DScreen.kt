@@ -2,7 +2,9 @@ package com.example.ui.screens
 
 import android.annotation.SuppressLint
 import android.graphics.Color
+import android.util.Log
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -44,7 +46,7 @@ private fun mimeFor(path: String): String = when (path.substringAfterLast('.', "
 
 /**
  * Full-screen 3D tractor-trailer with Explore, Find it and Test modes.
- * Needs an internet connection the first time it opens (three.js loads from a CDN).
+ * three.js is bundled in assets/pretrip3d/three, so this works offline.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,11 +94,17 @@ private fun createInspectionWebView(context: android.content.Context): WebView {
         settings.allowFileAccess = false
         settings.allowContentAccess = false
         setBackgroundColor(Color.rgb(223, 228, 232))
-        webChromeClient = WebChromeClient()
+        webChromeClient = object : WebChromeClient() {
+            // Page errors show up in Logcat under the tag PreTrip3D.
+            override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                Log.d("PreTrip3D", "${message.message()} (${message.sourceId()}:${message.lineNumber()})")
+                return true
+            }
+        }
         webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 val url = request.url
-                if (url.host != ASSET_HOST) return null // fonts and three.js come from the network as usual
+                if (url.host != ASSET_HOST) return null // only web fonts come from the network
                 val path = url.path?.removePrefix("/assets/") ?: return null
                 return try {
                     val mime = mimeFor(path)
