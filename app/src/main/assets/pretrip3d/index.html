@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CDL Semi Pre-Trip Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: a working tool for a driver studying for the pre-trip; plain, direct, shop-floor.
+IDEA: a DOT inspection clipboard clipped beside the truck: the truck is the picture, the clipboard holds the checklist and the test.
+PICTURE: the full 3D tractor-trailer, filling most of the screen; in Test mode the camera spins to and zooms in on each part.
+COLOUR and TYPE: asphalt ground, safety-yellow accent, white clipboard paper; Barlow Condensed headings like road signage, Barlow body.
+LAYOUT: 3D view left (or top on phones), clipboard panel right with Explore, Find it and Test tabs.
+*/
+:root{color-scheme:light dark;--bg:light-dark(#e9ecef,#14181b);--ink:light-dark(#15191c,#eef1f3);--paper:light-dark(#ffffff,#1e2428);--line:light-dark(#d3d8dc,#323a40);--muted:light-dark(#5a646b,#a3adb4);--soft:light-dark(#f3f5f7,#252c31);--yellow:#f2b705;--asphalt:#1d2226;--ok:#1f8a4c;--bad:#c62f2f;--blue:#2f7bff}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:clip;display:flex;flex-direction:column}
+header{background:var(--asphalt);color:#fff;padding:10px max(2vw,14px);display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:4px solid var(--yellow)}
+header p{margin:0;color:#c9d0d5;font-size:14px}
+main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 390px;min-height:0}
+#view{position:relative;min-height:420px;background:#dfe4e8}
+#view canvas{position:absolute;inset:0;width:100%;height:100%}
+#status{position:absolute;left:12px;bottom:12px;background:rgba(29,34,38,.85);color:#fff;font-size:13px;padding:6px 10px;border-radius:6px;pointer-events:none}
+#toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);padding:8px 14px;border-radius:8px;font-weight:600;color:#fff;display:none;max-width:90%;text-align:center}
+#callout{position:absolute;left:12px;top:12px;right:12px;display:none;pointer-events:none}
+#callout span{display:inline-block;background:var(--asphalt);color:#fff;border-left:5px solid var(--yellow);padding:7px 12px;border-radius:6px;font:600 16px/1.25 Barlow,sans-serif;max-width:100%}
+aside{background:var(--paper);border-left:1px solid var(--line);overflow-y:auto;padding:16px 18px 28px}
+h2{font:700 20px/1.1 "Barlow Condensed",sans-serif;margin:18px 0 8px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+button{font:500 15px Barlow,sans-serif;min-height:40px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink);cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+button[aria-pressed=true]{background:var(--yellow);border-color:var(--yellow);color:#1b1b1b}
+button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);font-weight:600;min-height:44px;padding:8px 18px}
+:root[data-theme=dark] button.primary{background:var(--yellow);color:#1b1b1b;border-color:var(--yellow)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) button.primary{background:var(--yellow);color:#1b1b1b;border-color:var(--yellow)}}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tabs button{border:0;border-radius:0;min-height:44px;font-weight:600}
+select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+label.chk{display:flex;gap:10px;align-items:flex-start;font-size:15px;margin-top:10px;cursor:pointer}
+label.chk input{width:20px;height:20px;margin-top:2px;flex:none}
+.card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:10px}
+.card .lab{font:700 19px/1.15 "Barlow Condensed",sans-serif}
+.card .zone{font-size:13px;color:var(--muted);margin:2px 0 6px}
+.card p{margin:0}
+.empty{color:var(--muted);font-size:15px}
+ul.parts{list-style:none;margin:8px 0 0;padding:0;max-height:260px;overflow-y:auto;border-top:1px solid var(--line)}
+ul.parts li button{width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;min-height:40px;font-size:15px}
+ul.parts li button[aria-current=true]{background:light-dark(#eef4ff,#1b2a40)}
+.find{font:700 22px/1.15 "Barlow Condensed",sans-serif;margin:6px 0}
+.score{font-size:14px;color:var(--muted)}
+.note{font-size:13px;color:var(--muted);margin-top:18px}
+.prog{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:var(--muted)}
+.bar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden;margin:6px 0 12px}
+.bar i{display:block;height:100%;background:var(--yellow);transition:width .3s}
+.q{font:700 22px/1.15 "Barlow Condensed",sans-serif;margin:0 0 10px}
+.opts{display:grid;gap:8px}
+.opts button{text-align:left;display:flex;gap:10px;align-items:flex-start;min-height:48px;padding:10px 12px;line-height:1.35;font-size:15px}
+.opts button b{flex:none;width:24px;height:24px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:13px}
+.opts button.right{border-color:var(--ok);background:light-dark(#e6f4ec,#173523)}
+.opts button.wrong{border-color:var(--bad);background:light-dark(#fbeaea,#3a1c1c)}
+.opts button:disabled{cursor:default;color:var(--ink)}
+.fb{margin-top:12px;padding:12px 14px;border-radius:10px;border:1px solid var(--line)}
+.fb.ok{border-color:var(--ok)}.fb.no{border-color:var(--bad)}
+.fb strong{display:block;font:700 18px/1.2 "Barlow Condensed",sans-serif;margin-bottom:4px}
+.fb.ok strong{color:var(--ok)}.fb.no strong{color:var(--bad)}
+.big{font:700 48px/1 "Barlow Condensed",sans-serif;margin:4px 0}
+.zrow{display:grid;grid-template-columns:minmax(0,1fr) 90px 54px;gap:8px;align-items:center;font-size:14px;padding:4px 0;border-bottom:1px solid var(--line)}
+.zrow .bar{margin:0}
+.zrow span:last-child{text-align:right;white-space:nowrap}
+.miss{border-left:4px solid var(--bad);padding:8px 10px;margin-top:8px;background:var(--soft);border-radius:0 8px 8px 0}
+.miss b{display:block;font-size:15px}.miss p{margin:2px 0 0;font-size:14px;color:var(--muted)}
+.kbd{font-size:13px;color:var(--muted);margin-top:10px}
+@media(max-width:860px){main{grid-template-columns:1fr;grid-template-rows:44vh minmax(0,1fr)}aside{border-left:0;border-top:1px solid var(--line)}#view{min-height:0}.kbd{display:none}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script>
+</head>
+<body>
+<main>
+  <div id="view"><div id="callout"><span id="calloutText"></span></div><div id="status">Loading 3D truck…</div><div id="toast"></div></div>
+  <aside>
+    <div class="tabs" role="tablist">
+      <button id="tabExplore" role="tab" aria-pressed="true">Explore</button>
+      <button id="tabQuiz" role="tab" aria-pressed="false">Find it</button>
+      <button id="tabTest" role="tab" aria-pressed="false">Test</button>
+    </div>
+    <div id="zoneBox">
+      <h2>Inspection zone</h2>
+      <select id="zone" aria-label="Inspection zone"><option value="">Whole truck</option></select>
+    </div>
+    <h2>Open up</h2>
+    <div class="row">
+      <button id="tHood" aria-pressed="false">Hood</button>
+      <button id="tCab" aria-pressed="false">Cab doors</button>
+      <button id="tTrl" aria-pressed="false">Trailer doors</button>
+      <button id="tLow" aria-pressed="false">Low coolant</button>
+    </div>
+    <section id="explore">
+      <h2>Selected part</h2>
+      <div id="card" class="card"><p class="empty">Click a part on the truck, or pick one below.</p></div>
+      <h2 id="listTitle">Parts</h2>
+      <ul class="parts" id="list"></ul>
+    </section>
+    <section id="quiz" hidden>
+      <h2>Click this part</h2>
+      <div class="card"><div class="find" id="target">–</div><div class="score" id="score">0 correct · 0 missed</div></div>
+      <div class="row" style="margin-top:10px"><button id="skip">Show me</button><button id="next">Next part</button></div>
+      <div id="qcard"></div>
+    </section>
+    <section id="test" hidden>
+      <div id="tSetup">
+        <h2>Pre-trip test</h2>
+        <p style="margin:0">The test goes through the inspection in CDL order. For each part, the truck spins and zooms in on it, then you answer.</p>
+        <h2>What to test</h2>
+        <select id="tScope" aria-label="What to test"><option value="">Full pre-trip (all zones)</option></select>
+        <h2>Questions for each part</h2>
+        <select id="tStyle" aria-label="Questions for each part">
+          <option value="both">Name the part, then what to check</option>
+          <option value="name">Name the part only</option>
+          <option value="checks">What to check only</option>
+        </select>
+        <label class="chk"><input type="checkbox" id="tDedupe" checked> Ask about each part once, not again for the other side or the inner and outer dual</label>
+        <label class="chk"><input type="checkbox" id="tSpin" checked> Spin the truck between parts</label>
+        <p class="score" id="tCount" style="margin-top:12px"></p>
+        <button class="primary" id="tStart">Start test</button>
+      </div>
+      <div id="tRun" hidden>
+        <div class="prog"><span id="tProg"></span><span id="tZone"></span></div>
+        <div class="bar"><i id="tBar" style="width:0%"></i></div>
+        <p class="q" id="tQ"></p>
+        <div class="opts" id="tOpts"></div>
+        <div id="tFb"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="primary" id="tNext" hidden>Next</button>
+          <button id="tReplay">Show me again</button>
+          <button id="tEnd">End test</button>
+        </div>
+        <p class="kbd">Keys: 1–4 to answer, Enter for next.</p>
+      </div>
+      <div id="tDone" hidden></div>
+    </section>
+    <p class="note">Preview of the model for your CDL study app. Checks are study notes paraphrasing common CDL manual pre-trip items; confirm them against your state's CDL manual.</p>
+  </aside>
+</main>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+{
+const ZONES = ["Engine Compartment","Front of Vehicle","Lights & Reflectors","Steering","Front Suspension","Front Brakes","Front Wheels","Side of Vehicle","Drive Axles","Drive Axle Suspension","Drive Axle Brakes","Drive Axle Wheels","Rear of Tractor","Coupling System","Trailer Side","Trailer Suspension","Trailer Brakes","Trailer Wheels","Trailer Rear"];
+const ZVIEW = {"Engine Compartment":[0.6,0.8,0.9],"Front of Vehicle":[1,0.45,0.4],"Steering":[0.9,0.3,0.8],"Front Suspension":[0.6,0.2,1],"Front Brakes":[0.6,0.2,1],"Front Wheels":[0.3,0.25,1],"Side of Vehicle":[0.25,0.4,1],"Drive Axles":[0.3,0.15,1],"Drive Axle Suspension":[0.3,0.15,1],"Drive Axle Brakes":[0.3,0.15,1],"Drive Axle Wheels":[0.3,0.25,1],"Rear of Tractor":[-1,0.35,0.6],"Coupling System":[-0.5,0.55,0.9],"Trailer Side":[0.3,0.4,1],"Trailer Suspension":[0.3,0.15,1],"Trailer Brakes":[0.3,0.15,1],"Trailer Wheels":[0.3,0.25,1],"Trailer Rear":[-1,0.35,0.5]};
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const st = { mode: "explore", zone: "", selected: null, hood: false, cab: false, trl: false, low: false, flash: null, target: null, good: 0, bad: 0, hover: null };
+const T = { on: false, list: [], i: 0, step: 0, steps: [], answered: false, results: [], color: null, opts: [], spin: true };
+
+// ---------- scene ----------
+const host = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+host.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#dfe4e8");
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(8, 14, 10); scene.add(sun);
+const ground = new THREE.Mesh(new THREE.CircleGeometry(40, 64), new THREE.MeshStandardMaterial({ color: "#b9bfc4", roughness: 0.95 }));
+ground.rotation.x = -Math.PI / 2; ground.position.set(-9, -0.001, 0); scene.add(ground);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 300); camera.position.set(7, 5, 15);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(-8, 1.5, 0); controls.enableDamping = true; controls.minDistance = 0.4; controls.maxDistance = 60; controls.maxPolarAngle = Math.PI * 0.53;
+
+const parts = [], nodes = new Map(), meshes = new Map(), allMeshes = [], openables = [], fluids = [];
+let fly = null, sig = "", faded = new Set();
+
+function setEm(id, color, k) {
+  for (const m of meshes.get(id) || []) {
+    const o = m.userData.__em;
+    if (color) { m.material.emissive.set(color); m.material.emissiveIntensity = k; } else { m.material.emissive.copy(o.c); m.material.emissiveIntensity = o.i; }
+  }
+}
+function paint() {
+  const tid = T.on ? T.list[T.i] && T.list[T.i].id : null;
+  const s = [st.selected, st.flash && st.flash.id + st.flash.c, st.hover, st.mode, tid].join("|");
+  if (s !== sig) {
+    sig = s;
+    for (const id of meshes.keys()) {
+      if (id === tid) continue;
+      if (st.flash && st.flash.id === id) setEm(id, st.flash.c, 0.8);
+      else if (id === st.selected && !T.on) setEm(id, "#2f7bff", 0.7);
+      else if (id === st.hover) setEm(id, "#ffffff", 0.22);
+      else setEm(id, null);
+    }
+  }
+  if (tid) {
+    const k = T.color ? 0.75 : 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(performance.now() / 180));
+    setEm(tid, T.color || "#ffb000", k);
+  }
+}
+
+// ---------- camera moves ----------
+const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+function flyCam(target, offset, spin, dur) {
+  const s0 = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target));
+  const s1 = new THREE.Spherical().setFromVector3(offset);
+  let dth = s1.theta - s0.theta;
+  while (dth > Math.PI) dth -= 2 * Math.PI;
+  while (dth < -Math.PI) dth += 2 * Math.PI;
+  if (spin) dth += (dth >= 0 ? 1 : -1) * 2 * Math.PI;
+  fly = { t: 0, dur, a: controls.target.clone(), b: target.clone(), s0, s1, dth, bump: spin ? Math.max(s1.radius * 0.9, 3) : 0, lift: spin ? 0.35 : 0 };
+  controls.enabled = false;
+  clearFade();
+}
+function stepFly(dt) {
+  if (!fly) return;
+  fly.t = Math.min(1, fly.t + dt / fly.dur);
+  const e = ease(fly.t), w = Math.sin(Math.PI * fly.t);
+  controls.target.lerpVectors(fly.a, fly.b, e);
+  const r = THREE.MathUtils.lerp(fly.s0.radius, fly.s1.radius, e) + fly.bump * w;
+  const phi = THREE.MathUtils.clamp(THREE.MathUtils.lerp(fly.s0.phi, fly.s1.phi, e) - fly.lift * w, 0.12, 1.62);
+  const th = fly.s0.theta + fly.dth * e;
+  camera.position.copy(controls.target).add(new THREE.Vector3().setFromSphericalCoords(r, phi, th));
+  if (fly.t >= 1) { fly = null; controls.enabled = true; if (T.on) updateFade(); }
+}
+function zoneBox(zone) {
+  const box = new THREE.Box3();
+  for (const p of parts) if (!zone || p.zone === zone) box.expandByObject(nodes.get(p.id));
+  return box;
+}
+function flyToZone(zone) {
+  const box = zoneBox(zone); if (box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
+  const dir = new THREE.Vector3(...(zone ? (ZVIEW[zone] || [0.6, 0.35, 1]) : [0.55, 0.3, 0.8])).normalize();
+  flyCam(c, dir.multiplyScalar(Math.min(Math.max(size * (zone ? 0.75 : 0.62), 2.2), 40)), false, REDUCED ? 0.01 : 0.9);
+}
+function partView(p) {
+  const box = new THREE.Box3().setFromObject(nodes.get(p.id));
+  const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
+  let d = (ZVIEW[p.zone] || [0.4, 0.35, 1]).slice();
+  if (p.zone === "Lights & Reflectors") d = c.x > 0.3 ? [1, 0.35, 0.5] : c.x < -19.5 ? [-1, 0.35, 0.5] : c.x < -6.6 && c.x > -7.2 ? [-1, 0.35, 0.5] : [0.3, 0.3, 1];
+  if (p.zone === "Coupling System" && c.y > 1.5) d = [-0.7, 0.45, 0.8];
+  const side = c.z < -0.15 ? -1 : 1;
+  d[2] *= side;
+  const dist = THREE.MathUtils.clamp(size * 1.6 + 0.8, 1.2, 24);
+  return { c, off: new THREE.Vector3(...d).normalize().multiplyScalar(dist) };
+}
+
+// ---------- see-through for parts in the way ----------
+function clearFade() {
+  for (const m of faded) { const o = m.userData.__op; m.material.transparent = o.t; m.material.opacity = o.o; m.material.depthWrite = o.d; m.material.needsUpdate = true; }
+  faded = new Set();
+}
+const fr = new THREE.Raycaster();
+function updateFade() {
+  const p = T.on && T.list[T.i]; if (!p) return;
+  const root = nodes.get(p.id), own = new Set();
+  root.traverse((m) => m.isMesh && own.add(m));
+  const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3()), h = box.getSize(new THREE.Vector3()).multiplyScalar(0.3);
+  const pts = [c];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) pts.push(c.clone().add(new THREE.Vector3(sx * h.x, sy * h.y, sz * h.z)));
+  const next = new Set();
+  for (const pt of pts) {
+    const dir = pt.clone().sub(camera.position), len = dir.length(); dir.normalize();
+    fr.set(camera.position, dir); fr.far = len - 0.02;
+    for (const hit of fr.intersectObjects(allMeshes, false)) if (!own.has(hit.object)) next.add(hit.object);
+  }
+  for (const m of faded) if (!next.has(m)) { const o = m.userData.__op; m.material.transparent = o.t; m.material.opacity = o.o; m.material.depthWrite = o.d; m.material.needsUpdate = true; }
+  for (const m of next) if (!faded.has(m)) { m.material.transparent = true; m.material.opacity = 0.14; m.material.depthWrite = false; m.material.needsUpdate = true; }
+  faded = next;
+}
+controls.addEventListener("end", () => { if (T.on && !fly) updateFade(); });
+
+// ---------- load ----------
+fetch("cdl_semi.glb").then((r) => { if (!r.ok) throw new Error("model file missing (" + r.status + ")"); return r.arrayBuffer(); }).then((buf) => new GLTFLoader().parse(buf, "", (g) => {
+  scene.add(g.scene); g.scene.updateMatrixWorld(true);
+  g.scene.traverse((o) => {
+    const u = o.userData;
+    if (o.isMesh) {
+      o.material = o.material.clone();
+      o.userData.__em = { c: o.material.emissive.clone(), i: o.material.emissiveIntensity };
+      o.userData.__op = { t: o.material.transparent, o: o.material.opacity, d: o.material.depthWrite };
+      allMeshes.push(o);
+    }
+    if (u.inspectable) {
+      const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3());
+      const p = { id: u.inspect_id, label: u.label, zone: u.zone, checks: u.checks, cx: c.x, cz: c.z };
+      p.base = p.label.replace(/ \((Driver|Passenger) Side\)$/, "");
+      p.norm = p.base.replace(/^(Front|Rear) Drive Axle/, "Drive Axle").replace(/^Drive Axle (Front|Rear) /, "Drive Axle ").replace(/^Trailer (Front|Rear) Axle/, "Trailer Axle").replace(/ (Inner|Outer) /, " ");
+      parts.push(p); nodes.set(p.id, o);
+    }
+    if (u.openable) openables.push({ o, base: o.quaternion.clone(), axis: new THREE.Vector3(...String(u.open_axis_gltf).split(",").map(Number)), ang: THREE.MathUtils.degToRad(u.open_angle_deg), amt: 0, grp: u.openable === "hood" ? "hood" : o.name.startsWith("Cab_Door") ? "cab" : "trl" });
+    if (u.fluid_level !== undefined) fluids.push({ o, name: o.name, minY: new THREE.Box3().setFromObject(o).min.y, def: u.fluid_level });
+  });
+  for (const p of parts) {
+    const list = [], root = nodes.get(p.id);
+    root.traverse((m) => {
+      if (!m.isMesh) return;
+      let q = m; while (q && !q.userData.inspectable) q = q.parent;
+      if (q === root) list.push(m);
+    });
+    meshes.set(p.id, list);
+  }
+  const zs = ZONES.filter((z) => parts.some((p) => p.zone === z));
+  const opts = zs.map((z) => `<option value="${esc(z)}">${esc(z)} (${parts.filter((p) => p.zone === z).length})</option>`).join("");
+  $("zone").insertAdjacentHTML("beforeend", opts);
+  $("tScope").insertAdjacentHTML("beforeend", zs.map((z) => `<option value="${esc(z)}">${esc(z)}</option>`).join(""));
+  $("status").textContent = "Drag to turn · pinch to zoom · tap a part";
+  renderList(); flyToZone(""); testCount();
+}, (e) => { $("status").textContent = "Could not load the model: " + e.message; })).catch((e) => { $("status").textContent = "Could not load the model: " + e.message; });
+
+// ---------- explore + find it ----------
+function zoneParts() { return parts.filter((p) => !st.zone || p.zone === st.zone).sort((a, b) => a.label.localeCompare(b.label)); }
+function cardHTML(p) { return p ? `<div class="lab">${esc(p.label)}</div><div class="zone">${esc(p.zone)}</div><p>${esc(p.checks)}</p>` : `<p class="empty">Click a part on the truck, or pick one below.</p>`; }
+function renderList() {
+  $("listTitle").textContent = (st.zone || "All parts") + ` (${zoneParts().length})`;
+  $("list").innerHTML = zoneParts().map((p) => `<li><button data-id="${esc(p.id)}" aria-current="${p.id === st.selected}">${esc(p.label)}</button></li>`).join("");
+  $("card").innerHTML = cardHTML(parts.find((p) => p.id === st.selected));
+}
+function select(id) { st.selected = id; renderList(); }
+function newTarget() {
+  const pool = zoneParts(); st.target = pool[Math.floor(Math.random() * pool.length)] || null;
+  $("target").textContent = st.target ? st.target.label : "No parts in this zone";
+  $("qcard").innerHTML = ""; st.selected = null; st.flash = null;
+}
+function toast(text, color) { const t = $("toast"); t.textContent = text; t.style.background = color; t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(() => (t.style.display = "none"), 1400); }
+function answer(p) {
+  if (!st.target) return;
+  if (p && p.id === st.target.id) {
+    st.good++; st.flash = { id: p.id, c: "#1f8a4c" }; toast("Correct", "#1f8a4c");
+    $("qcard").innerHTML = `<div class="card">${cardHTML(p)}</div>`;
+    setTimeout(() => { if (st.mode === "quiz") newTarget(); }, 1300);
+  } else {
+    st.bad++; st.flash = p ? { id: p.id, c: "#c62f2f" } : null;
+    toast(p ? "That's the " + p.label : "Missed: no part there", "#c62f2f");
+    setTimeout(() => { if (st.flash && st.flash.c === "#c62f2f") st.flash = null; }, 1300);
+  }
+  $("score").textContent = `${st.good} correct · ${st.bad} missed`;
+}
+function setHood(on) { st.hood = on; $("tHood").setAttribute("aria-pressed", on); }
+
+// ---------- test ----------
+const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+function testPool() {
+  const scope = $("tScope").value;
+  let pool = parts.filter((p) => !scope || p.zone === scope);
+  if ($("tDedupe").checked) {
+    const seen = new Map();
+    for (const p of pool) { const k = p.zone + "|" + p.norm, cur = seen.get(k); if (!cur || (cur.cz < 0 && p.cz >= 0)) seen.set(k, p); }
+    pool = [...seen.values()];
+  }
+  return pool.sort((a, b) => ZONES.indexOf(a.zone) - ZONES.indexOf(b.zone) || b.cx - a.cx || b.cz - a.cz);
+}
+function testCount() {
+  const n = testPool().length, q = $("tStyle").value === "both" ? n * 2 : n;
+  $("tCount").textContent = `${n} parts · ${q} questions`;
+}
+for (const id of ["tScope", "tStyle", "tDedupe"]) $(id).addEventListener("change", testCount);
+function startTest(list) {
+  if (!list.length) return;
+  T.on = true; T.list = list; T.i = 0; T.results = []; T.spin = $("tSpin").checked && !REDUCED;
+  const style = $("tStyle").value;
+  T.steps = style === "both" ? ["name", "checks"] : [style];
+  $("tSetup").hidden = true; $("tDone").hidden = true; $("tRun").hidden = false;
+  showPart();
+}
+function nameOptions(p) {
+  const pool = parts.filter((q) => q.norm !== p.norm);
+  const same = shuffle(pool.filter((q) => q.zone === p.zone)), other = shuffle(pool.filter((q) => q.zone !== p.zone));
+  const picks = [];
+  for (const q of [...same, ...other]) { if (picks.length === 3) break; if (!picks.includes(q.norm)) picks.push(q.norm); }
+  return shuffle([{ t: p.norm, ok: true }, ...picks.map((t) => ({ t, ok: false }))]);
+}
+function checkOptions(p) {
+  const key = (s) => s.slice(0, 22);
+  const pool = parts.filter((q) => key(q.checks) !== key(p.checks));
+  const same = shuffle(pool.filter((q) => q.zone === p.zone)), other = shuffle(pool.filter((q) => q.zone !== p.zone));
+  const picks = [];
+  for (const q of [...same, ...other]) { if (picks.length === 3) break; if (!picks.some((c) => key(c) === key(q.checks))) picks.push(q.checks); }
+  return shuffle([{ t: p.checks, ok: true }, ...picks.map((t) => ({ t, ok: false }))]);
+}
+function showPart() {
+  const p = T.list[T.i];
+  T.step = 0; T.color = null; T.results[T.i] = { p, ok: true };
+  if (p.zone === "Engine Compartment") setHood(true); else if (st.hood) setHood(false);
+  const v = partView(p);
+  flyCam(v.c, v.off, T.spin, REDUCED ? 0.01 : T.spin ? 2.4 : 1.0);
+  $("callout").style.display = "block";
+  showQuestion();
+}
+function showQuestion() {
+  const p = T.list[T.i], kind = T.steps[T.step];
+  T.answered = false; T.color = null;
+  $("tProg").textContent = `Part ${T.i + 1} of ${T.list.length}`;
+  $("tZone").textContent = p.zone;
+  $("tBar").style.width = (100 * T.i / T.list.length) + "%";
+  $("tQ").textContent = kind === "name" ? "What is the highlighted part?" : `What do you check on the ${p.norm.toLowerCase()}?`;
+  $("calloutText").textContent = kind === "name" ? `${p.zone}: what is this part?` : p.label;
+  T.opts = kind === "name" ? nameOptions(p) : checkOptions(p);
+  $("tOpts").innerHTML = T.opts.map((o, i) => `<button data-i="${i}"><b>${i + 1}</b><span>${esc(o.t)}</span></button>`).join("");
+  $("tFb").innerHTML = ""; $("tNext").hidden = true;
+}
+function pickAnswer(i) {
+  if (!T.on || T.answered || !T.opts[i]) return;
+  T.answered = true;
+  const p = T.list[T.i], kind = T.steps[T.step], ok = T.opts[i].ok;
+  if (!ok) { T.results[T.i].ok = false; (T.results[T.i].wrong ||= []).push(kind); }
+  [...$("tOpts").children].forEach((b, j) => { b.disabled = true; if (T.opts[j].ok) b.classList.add("right"); else if (j === i) b.classList.add("wrong"); });
+  T.color = ok ? "#1f8a4c" : "#c62f2f";
+  $("calloutText").textContent = p.label;
+  $("tFb").innerHTML = `<div class="fb ${ok ? "ok" : "no"}"><strong>${ok ? "Correct" : "Not quite"}</strong>${kind === "name" ? `This is the ${esc(p.label)}.` : `On the test, say: ${esc(p.checks)}`}</div>`;
+  const last = T.step === T.steps.length - 1 && T.i === T.list.length - 1;
+  $("tNext").textContent = T.step < T.steps.length - 1 ? "Next question" : last ? "See results" : "Next part";
+  $("tNext").hidden = false; $("tNext").focus({ preventScroll: true });
+}
+function nextStep() {
+  if (!T.answered) return;
+  if (T.step < T.steps.length - 1) { T.step++; showQuestion(); return; }
+  if (T.i < T.list.length - 1) { T.i++; showPart(); return; }
+  finishTest();
+}
+function finishTest() {
+  T.on = false; T.color = null; clearFade(); $("callout").style.display = "none"; sig = "";
+  const res = T.results.filter(Boolean), good = res.filter((r) => r.ok).length, pct = res.length ? Math.round(100 * good / res.length) : 0;
+  const zones = ZONES.filter((z) => res.some((r) => r.p.zone === z)).map((z) => { const rs = res.filter((r) => r.p.zone === z), g = rs.filter((r) => r.ok).length; return { z, g, n: rs.length }; });
+  const missed = res.filter((r) => !r.ok);
+  $("tRun").hidden = true; $("tDone").hidden = false;
+  $("tDone").innerHTML = `<h2>Test results</h2>
+    <div class="big">${pct}%</div><p class="score">${good} of ${res.length} parts answered fully right</p>
+    <h2>By zone</h2>${zones.map((r) => `<div class="zrow"><span>${esc(r.z)}</span><div class="bar"><i style="width:${(100 * r.g / r.n).toFixed(0)}%"></i></div><span>${r.g} / ${r.n}</span></div>`).join("")}
+    ${missed.length ? `<h2>Review these (${missed.length})</h2>${missed.map((r) => `<div class="miss"><b>${esc(r.p.label)}</b><p>${esc(r.p.checks)}</p></div>`).join("")}` : `<p style="margin-top:14px">No misses. You're ready for this section.</p>`}
+    <div class="row" style="margin-top:14px">${missed.length ? `<button class="primary" id="tRetake">Retake missed parts</button>` : ""}<button id="tNew">New test</button></div>`;
+  T.missed = missed.map((r) => r.p);
+  flyToZone("");
+}
+function endTest() { T.on = false; T.color = null; clearFade(); $("callout").style.display = "none"; sig = ""; $("tRun").hidden = true; $("tDone").hidden = true; $("tSetup").hidden = false; flyToZone(""); }
+$("tStart").addEventListener("click", () => startTest(testPool()));
+$("tOpts").addEventListener("click", (e) => { const b = e.target.closest("button[data-i]"); if (b) pickAnswer(+b.dataset.i); });
+$("tNext").addEventListener("click", nextStep);
+$("tReplay").addEventListener("click", () => { if (!T.on) return; const v = partView(T.list[T.i]); flyCam(v.c, v.off, T.spin, REDUCED ? 0.01 : T.spin ? 2.4 : 1.0); });
+$("tEnd").addEventListener("click", endTest);
+$("tDone").addEventListener("click", (e) => {
+  if (e.target.id === "tRetake") startTest(T.missed.slice());
+  if (e.target.id === "tNew") { $("tDone").hidden = true; $("tSetup").hidden = false; }
+});
+document.addEventListener("keydown", (e) => {
+  if (!T.on || e.target.tagName === "SELECT") return;
+  if (/^[1-4]$/.test(e.key)) pickAnswer(+e.key - 1);
+  else if (e.key === "Enter" && T.answered && e.target.tagName !== "BUTTON") nextStep();
+});
+
+// ---------- picking ----------
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pick(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  for (const h of ray.intersectObjects(scene.children, true)) {
+    if (faded.has(h.object)) continue;
+    let o = h.object; while (o && !o.userData.inspectable) o = o.parent;
+    if (o) return parts.find((p) => p.id === o.userData.inspect_id);
+    if (h.object === ground) return null;
+  }
+  return null;
+}
+let down = null;
+renderer.domElement.addEventListener("pointerdown", (e) => (down = [e.clientX, e.clientY]));
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (st.mode !== "test" && down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 6) { const p = pick(e); st.mode === "quiz" ? answer(p) : select(p ? p.id : null); }
+  down = null;
+});
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (e.pointerType !== "mouse" || e.buttons || st.mode === "test") return;
+  const p = pick(e); st.hover = st.mode === "explore" && p ? p.id : null;
+  renderer.domElement.style.cursor = p ? "pointer" : "grab";
+});
+$("list").addEventListener("click", (e) => { const b = e.target.closest("button[data-id]"); if (b) select(b.dataset.id); });
+$("zone").addEventListener("change", (e) => {
+  st.zone = e.target.value; flyToZone(st.zone);
+  if (st.zone === "Engine Compartment" && !st.hood) setHood(true);
+  st.mode === "quiz" ? newTarget() : renderList();
+});
+for (const [id, key] of [["tHood", "hood"], ["tCab", "cab"], ["tTrl", "trl"], ["tLow", "low"]]) {
+  $(id).addEventListener("click", () => { st[key] = !st[key]; $(id).setAttribute("aria-pressed", st[key]); if (T.on) setTimeout(updateFade, 900); });
+}
+function setMode(m) {
+  if (st.mode === "test" && m !== "test" && T.on) endTest();
+  st.mode = m;
+  for (const [id, k] of [["tabExplore", "explore"], ["tabQuiz", "quiz"], ["tabTest", "test"]]) $(id).setAttribute("aria-pressed", m === k);
+  $("explore").hidden = m !== "explore"; $("quiz").hidden = m !== "quiz"; $("test").hidden = m !== "test"; $("zoneBox").hidden = m === "test";
+  st.hover = null; st.flash = null; renderer.domElement.style.cursor = m === "test" ? "grab" : "";
+  if (m === "quiz") newTarget(); else if (m === "explore") renderList(); else testCount();
+}
+$("tabExplore").addEventListener("click", () => setMode("explore"));
+$("tabQuiz").addEventListener("click", () => setMode("quiz"));
+$("tabTest").addEventListener("click", () => setMode("test"));
+$("next").addEventListener("click", newTarget);
+$("skip").addEventListener("click", () => {
+  if (!st.target) return; st.bad++; st.flash = { id: st.target.id, c: "#f2b705" };
+  $("score").textContent = `${st.good} correct · ${st.bad} missed`;
+  $("qcard").innerHTML = `<div class="card">${cardHTML(st.target)}</div>`;
+  const v = partView(st.target); flyCam(v.c, v.off, false, REDUCED ? 0.01 : 1.0);
+});
+
+// ---------- loop ----------
+const resize = () => { const w = host.clientWidth || 1, h = host.clientHeight || 1; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
+const ro = new ResizeObserver(resize); ro.observe(host); resize();
+const clock = new THREE.Clock(), q = new THREE.Quaternion();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.1);
+  for (const o of openables) {
+    const tgt = st[o.grp] ? 1 : 0; o.amt += (tgt - o.amt) * Math.min(1, dt * 4);
+    o.o.quaternion.copy(o.base).multiply(q.setFromAxisAngle(o.axis, o.ang * o.amt));
+  }
+  for (const f of fluids) {
+    const lvl = f.name === "Coolant_Fluid_Level" && st.low ? 0.12 : f.def, s = lvl / f.def;
+    f.o.scale.y = s; f.o.position.y = f.minY * (1 - s);
+  }
+  stepFly(dt);
+  paint(); controls.update(); renderer.render(scene, camera);
+});
+}
+</script>
+</body>
+</html>
