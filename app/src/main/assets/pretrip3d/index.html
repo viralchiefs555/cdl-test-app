@@ -71,6 +71,11 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
 .miss{border-left:4px solid var(--bad);padding:8px 10px;margin-top:8px;background:var(--soft);border-radius:0 8px 8px 0}
 .miss b{display:block;font-size:15px}.miss p{margin:2px 0 0;font-size:14px;color:var(--muted)}
 .miss .yours{color:var(--bad)}
+.info h3{font:600 13px/1.2 Barlow,sans-serif;letter-spacing:.02em;color:var(--muted);margin:14px 0 3px}
+.info p{margin:0;font-size:16px;line-height:1.45}
+.info .how{background:var(--sel);border-left:4px solid var(--yellow);padding:8px 10px;border-radius:0 8px 8px 0}
+.timer{height:4px;background:var(--soft);border-radius:2px;overflow:hidden;margin:14px 0 2px}
+.timer i{display:block;height:100%;background:var(--muted)}
 .note{font-size:13px;color:var(--muted);margin-top:18px}
 @media(max-width:860px){
   html,body{height:auto;min-height:100%}body{display:block}main{display:block}
@@ -93,19 +98,20 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
     <section id="find">
       <div id="fSetup">
         <h2>Find it</h2>
-        <p class="lead">The truck moves to each inspection area on its own and asks you to tap a part. When you find it, you'll see what to check, then it moves on.</p>
-        <select id="fScope" aria-label="Area to practice"><option value="">All areas, in pre-trip order</option></select>
-        <button class="primary" id="fStart" type="button">Start</button>
+        <p class="lead">A guided walk-around. The truck zooms in on each part in pre-trip order and fades everything else, then tells you what the part is, what to check, and what to do and say on the test. It moves on by itself.</p>
+        <select id="fScope" aria-label="Area to walk through"><option value="">All areas, in pre-trip order</option></select>
+        <button class="primary" id="fStart" type="button">Start walk-around</button>
       </div>
       <div id="fRun" class="runbox" hidden>
         <div class="prog"><span id="fProg"></span><span id="fZone"></span></div>
         <div class="bar"><i id="fBar" style="width:0%"></i></div>
-        <p class="ask" id="fAsk"></p>
-        <p class="lead" id="fHint">Tap it on the truck.</p>
-        <div id="fCard"></div>
-        <div class="row" style="margin-top:12px">
+        <p class="ask" id="fTitle"></p>
+        <div class="info" id="fInfo"></div>
+        <div class="timer"><i id="fTimer" style="width:100%"></i></div>
+        <div class="row" style="margin-top:10px">
+          <button id="fBack" type="button">Back</button>
           <button id="fPause" type="button" aria-pressed="false">Pause</button>
-          <button id="fNext" type="button">Next part</button>
+          <button id="fNext" type="button">Next</button>
           <button id="fStop" type="button">Stop</button>
         </div>
       </div>
@@ -148,7 +154,141 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
   const ZONES = ["Engine Compartment","Front of Vehicle","Lights & Reflectors","Steering","Front Suspension","Front Brakes","Front Wheels","Side of Vehicle","Drive Axles","Drive Axle Suspension","Drive Axle Brakes","Drive Axle Wheels","Rear of Tractor","Coupling System","Trailer Side","Trailer Suspension","Trailer Brakes","Trailer Wheels","Trailer Rear"];
   const ZVIEW = {"Engine Compartment":[0.6,0.8,0.9],"Front of Vehicle":[1,0.45,0.4],"Steering":[0.9,0.3,0.8],"Front Suspension":[0.6,0.2,1],"Front Brakes":[0.6,0.2,1],"Front Wheels":[0.3,0.25,1],"Side of Vehicle":[0.25,0.4,1],"Drive Axles":[0.3,0.15,1],"Drive Axle Suspension":[0.3,0.15,1],"Drive Axle Brakes":[0.3,0.15,1],"Drive Axle Wheels":[0.3,0.25,1],"Rear of Tractor":[-1,0.35,0.6],"Coupling System":[-0.5,0.55,0.9],"Trailer Side":[0.3,0.4,1],"Trailer Suspension":[0.3,0.15,1],"Trailer Brakes":[0.3,0.15,1],"Trailer Wheels":[0.3,0.25,1],"Trailer Rear":[-1,0.35,0.5]};
   const REDUCED = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  const AUTO_NEXT_MS = 4000;
+  // Walk-around guide: what each part is, and how to handle it on the pre-trip test.
+  // Keys are exact item names, or a class of item shared by every axle (see guideFor).
+  const GUIDE = {
+    // engine compartment
+    "Air Compressor": ["Belt- or gear-driven pump that builds the air pressure for the brakes.", "Point to it and say it is securely mounted with no cracks and no air or oil leaks. If it is belt-driven, check the belt too."],
+    "Air Compressor Belt": ["Drives the air compressor from the engine's crankshaft pulley.", "Press down at the middle of the belt and say how much it moves: no more than about 3/4 inch of play. Say it is not cracked, frayed or glazed."],
+    "Alternator": ["Charges the batteries and powers the electrical system while the engine runs.", "Point to it and say it is securely mounted with no loose or missing bolts, and the wiring is connected and not damaged."],
+    "Alternator / Water Pump Belt": ["Turns the alternator and the water pump from the crankshaft pulley.", "Press at the middle of the belt: no more than about 3/4 inch of play. Say it is not cracked, frayed, glazed or missing pieces."],
+    "Coolant Hoses": ["Carry coolant between the engine and the radiator.", "Squeeze or point along each hose. Say there are no cracks, cuts, bulges or leaks, and the clamps are tight."],
+    "Coolant Reservoir (Surge Tank)": ["Holds extra engine coolant. The level is read through the sight glass or the marks on the tank.", "Never open the cap on a hot engine. Point to the sight glass and say the level is between MIN and MAX and the cap is tight."],
+    "Engine & Transmission": ["The engine and transmission, plus the ground underneath them.", "Look under the engine and on the ground. Say there are no oil, coolant, fuel or power steering leaks and no loose parts."],
+    "Engine Electrical Wiring": ["The wiring harness that runs over and around the engine.", "Point along the wires. Say the insulation is not cut, frayed or chafed and the connections are secure."],
+    "Engine Oil Dipstick": ["Shows the engine oil level.", "Pull it out, wipe it, put it back, then pull it again and read it. Say the oil is in the safe operating range, above the add mark."],
+    "Power Steering Fluid Reservoir": ["Holds the hydraulic fluid for the power steering.", "Check the dipstick or sight glass. Say the fluid is at or above the minimum mark, the cap is tight, and there are no leaks."],
+    "Radiator & Fan Shroud": ["Cools the engine. The shroud guides air from the fan through the radiator.", "Point to it and say it is securely mounted, not leaking, with fins that are not clogged or damaged."],
+    "Water Pump": ["Pumps coolant through the engine and radiator.", "Point to it and say it is securely mounted, with no coolant leaking from the pump or its weep hole."],
+    "Windshield Washer Fluid Reservoir": ["Holds the fluid for the windshield washers.", "Point to it and say the fluid level is good, the cap is on, and there are no leaks."],
+    // front of vehicle and lights
+    "Front Bumper": ["Protects the front of the truck.", "Point to it and say it is securely mounted, not bent or cracked, and nothing is hanging loose."],
+    "Hood": ["Tilts forward to open the engine compartment.", "Say the hood opens and closes properly and the latches and hinges are secure."],
+    "Windshield": ["Your view of the road.", "Say it is clean, with no cracks, chips or stickers blocking your view."],
+    "Windshield Wipers": ["Keep the windshield clear in rain and snow.", "Lift or touch the arms. Say they are secure, the rubber blades are in good condition, and the wipers work."],
+    "Cab Clearance / ID Lights": ["The five amber lights on the cab roof that show the truck's width and height.", "Point to each one with the lights on. Say they are clean, not cracked, the right color, and working."],
+    "Front Turn Signal": ["Amber signal light at the front corner.", "With the turn signals or 4-way flashers on, point to it and say it is clean, not cracked, amber, and flashing."],
+    "Headlight": ["Low and high beam headlights.", "Turn the headlights on. Point to them and say low and high beams both work, and the lenses are clean, not cracked, and white."],
+    "Rear Reflective Tape": ["Red and white reflective tape across the back of the trailer.", "Point along the tape. Say it is present, clean, and not peeling."],
+    "Side Reflective (Conspicuity) Tape": ["Red and white reflective tape along the side of the trailer.", "Point along the tape. Say it is present, clean, and not peeling."],
+    "Tractor Tail, Brake & Turn Lights": ["Lights on the back of the tractor frame.", "Point to each light with the lights on. Say the lenses are clean, not cracked, the right color, and working."],
+    "Trailer Front Clearance Lights": ["Amber lights across the top front of the trailer.", "Point to them with the lights on. Say they are clean, not cracked, amber, and working."],
+    "Trailer Rear Clearance & ID Lights": ["Red lights across the top of the trailer's back end.", "Point to each one with the lights on. Say they are clean, not cracked, red, and working."],
+    "Trailer Side Marker Lights": ["Lights along the trailer's side: amber at the front and middle, red at the back.", "Point to each one with the lights on. Say they are clean, not cracked, the right color, and working."],
+    "Trailer Tail, Brake & Turn Lights": ["Tail lights, brake lights and turn signals on the back of the trailer.", "Have the lights, brakes and signals on. Point to each and say it is clean, not cracked, red, and working."],
+    // steering
+    "Drag Link": ["Connects the pitman arm to the steering arm on the front wheel.", "Point to it and both ball joints. Say it is not bent, cracked or broken, the joints have no play, and the nuts and cotter pins are in place."],
+    "Pitman Arm": ["Connects the steering gear box to the drag link.", "Point to it and say it is not bent, cracked or broken and is secure on the gear box shaft."],
+    "Power Steering Hoses": ["Carry power steering fluid to and from the steering gear box.", "Point along the hoses. Say there are no cracks, cuts, bulges, chafing or leaks, and the fittings are tight."],
+    "Steering Gear Box": ["Turns the steering wheel's motion into movement of the front wheels.", "Point to it and its mounting bolts. Say it is securely mounted with no missing bolts or cotter keys and no fluid leaks."],
+    "Steering Knuckles & Steering Arm": ["The pivots the front wheels steer on, with the arm the drag link pushes.", "Point to them. Say they are not cracked or bent, with no missing nuts, bolts or cotter pins."],
+    "Steering Shaft & U-Joints": ["Connects the steering wheel to the steering gear box.", "Point to the shaft and joints. Say it is not bent or twisted and the U-joints are tight with no excessive play."],
+    "Tie Rod & Tie Rod Ends": ["Links the two front wheels so they steer together.", "Point to the rod and both ends. Say it is not bent or cracked, the ends have no play, and the nuts and cotter pins are in place."],
+    // suspension (shared by every axle)
+    "Front Axle": ["The front axle beam that carries the steer wheels.", "Point to it and say it is not cracked, bent or broken."],
+    "leaf": ["A stack of steel springs that carries the weight of the truck over the axle.", "Point to the leaves. Say none are missing, shifted, cracked or broken."],
+    "hangers": ["The brackets and shackles that hold the spring ends to the frame.", "Point to each one. Say they are not cracked or broken, with no missing bolts or bushings."],
+    "ubolts": ["Clamp the spring to the axle.", "Point to them and say they are not cracked or broken, the nuts are tight, and there are no rust trails showing movement."],
+    "shock": ["Dampens bouncing.", "Point to it and say it is securely mounted at both ends, not bent or dented, and not leaking oil."],
+    "airbag": ["Air spring that carries the load on air-ride suspensions.", "Point to it and say it is not cut, cracked, bulging or leaking, and is securely mounted."],
+    "torque": ["Rods that keep the axle aligned under braking and acceleration.", "Point to them and say they are securely mounted, not bent or cracked, with bushings intact."],
+    "trailing": ["The arm and frame hanger that hold the axle on an air-ride suspension, with its U-bolts.", "Point to the hanger, the arm and the U-bolts. Say nothing is cracked or broken and no bolts are missing."],
+    "Trailer Axle": ["The trailer's axle tube.", "Point to it and say it is not cracked or bent and is secure to the springs."],
+    "Trailer Spring Equalizer & Hanger": ["Balances the load between the two trailer axles' springs.", "Point to it and say it is not cracked or broken, with no missing bolts."],
+    "Drive Axle Housing & Differential": ["Houses the drive axle shafts and the differential gears.", "Point to it and say it is not cracked and there are no gear oil leaks at the differential or axle seals."],
+    // brakes (shared by every axle)
+    "chamber": ["Turns air pressure into the push that applies the brake.", "Point to it and say it is securely mounted, not cracked or dented, and you hear no air leaks."],
+    "spring_chamber": ["Two-part brake chamber: the front part applies the service brakes, the rear spring part applies the parking brake.", "Point to it and say it is securely mounted, not cracked or dented, and you hear no air leaks."],
+    "slack": ["The arm that links the pushrod to the brake camshaft. It is how the brakes are adjusted.", "With the brakes released and the wheels chocked, pull the slack adjuster by hand. Say it moves no more than about 1 inch, and nothing is broken, loose or missing."],
+    "drum": ["The drum the brake shoes press against to stop the wheel.", "Point to it and say there are no cracks, dents or holes and no oil or grease on it. If you can see the linings, say they are not too thin."],
+    "brake_hoses": ["Carry air to the brake chamber.", "Point along the hoses. Say they are not cracked, cut, worn or chafing, the fittings are secure, and you hear no leaks."],
+    // wheels (shared by every axle)
+    "tire_steer": ["Front steer tire.", "Measure the tread with a gauge: at least 4/32 inch on steer tires. Check inflation with a tire gauge. Say there are no cuts, bulges or exposed cords, and the valve stem and cap are in place."],
+    "tire_dual": ["One of a pair of dual tires.", "Measure the tread with a gauge: at least 2/32 inch. Check inflation with a tire gauge. Say there are no cuts, bulges or exposed cords, the duals are not touching, and nothing is stuck between them."],
+    "rim": ["The wheel the tire is mounted on.", "Point to it and say it is not cracked, bent or dented, has no illegal welds, and has no rust trails."],
+    "lug": ["Hold the wheel to the hub.", "Point to the lug nuts and say none are missing or loose, with no rust trails or shiny threads, and no cracks around the stud holes."],
+    "hub_oil": ["Covers the wheel bearings. The sight glass shows the oil level.", "Point to the sight glass and say the oil is at the proper level and the seal is not leaking."],
+    "hub_drive": ["The hub where the drive axle shaft bolts on.", "Point to it and say the axle seal is not leaking and the hub cap and bolts are secure."],
+    // side of vehicle
+    "Battery Box & Batteries": ["Holds the batteries.", "Point to it and say the box is secure, the cover is latched, and the batteries are secured, not leaking, with tight cables."],
+    "Cab Door": ["Driver and passenger doors.", "Open and close the door. Say it works properly, the hinges are secure, and the seals are intact."],
+    "DEF (Diesel Exhaust Fluid) Tank": ["Holds diesel exhaust fluid for the emissions system.", "Point to it and say it is securely mounted, the blue cap is tight, and there are no leaks."],
+    "Driveshaft & U-Joints": ["Carries power from the transmission to the drive axles.", "Point to it and say it is not bent or cracked, the U-joints are secure, and nothing is caught on it."],
+    "Exhaust System & Stack": ["Carries exhaust from the engine out the stack.", "Point along it and say it is securely mounted with no cracks, holes or black soot marks at the joints, and it is not touching fuel lines, air lines or wiring."],
+    "Fuel Tank & Cap": ["Holds the diesel fuel.", "Point to the tank, the straps and the cap. Say the tank is secure, the cap is tight, and there are no leaks."],
+    "Hood Convex Mirror": ["Small round mirror on the fender that covers the blind spot by the front corner.", "Point to it and say it is clean, not cracked, securely mounted, and adjusted."],
+    "air_tank": ["Stores compressed air for the brakes.", "Point to the tank and its drain valve. Say the tank is secure and not damaged, and you drain it to remove water and oil."],
+    "Side Mirrors & Brackets": ["Your main rear-view mirrors.", "Point to the mirrors and brackets. Say they are clean, not cracked, securely mounted, and adjusted."],
+    "Steps & Grab Handles": ["How you climb in and out of the cab.", "Grab and step on them. Say they are secure, not loose or broken, and free of oil, mud or ice."],
+    "Tractor Frame Rails & Crossmembers": ["The tractor's main frame.", "Point along the frame. Say there are no cracks, bends, holes, broken welds or missing bolts."],
+    "Tractor Mud Flaps (Splash Guards)": ["Stop spray and stones from the drive tires.", "Point to them and say they are securely mounted, not torn, and not rubbing the tires."],
+    // coupling system
+    "Catwalk / Deck Plate": ["The platform behind the cab where you stand to hook up the air and electrical lines.", "Point to it and say it is solid, bolted down, and clear of loose objects."],
+    "Electrical Line (Pigtail)": ["Carries power from the tractor to the trailer's lights.", "Point to it and the plug. Say the plug is fully seated and locked, and the cable is not cut or chafing, with enough slack for turns."],
+    "Emergency Air Line (Red)": ["Supplies air to the trailer and releases its spring brakes.", "Point to it. Say it is not cut, cracked or chafing, not tangled or dragging, and connected red to red."],
+    "Service Air Line (Blue)": ["Carries the brake signal to the trailer.", "Point to it. Say it is not cut, cracked or chafing, not tangled or dragging, and connected blue to blue."],
+    "Trailer Glad Hands (Air Couplers)": ["Where the red and blue air lines lock onto the trailer.", "Point to each one. Say they are connected and locked, the rubber seals are good, and you hear no air leaks."],
+    "Trailer Electrical Receptacle (7-Way)": ["The trailer's socket for the electrical line.", "Point to it and say it is not cracked, the plug is fully seated, and the cover is holding it in."],
+    "Fifth Wheel Locking Jaws": ["Close around the kingpin to lock the trailer to the tractor.", "Look from the back with a flashlight. Say the jaws are closed around the kingpin's shank, not its head, with no gap."],
+    "Fifth Wheel Mounting Bolts": ["Bolt the fifth wheel to the tractor frame.", "Point to them and say none are missing, loose or broken."],
+    "Fifth Wheel Mounting Brackets & Pins": ["Hold the fifth wheel plate and let it pivot.", "Point to them and say they are not cracked or broken and the pins are in place and secure."],
+    "Fifth Wheel Platform (Base)": ["The base that mounts the fifth wheel to the frame.", "Point to it and say it is securely mounted, not cracked or broken."],
+    "Fifth Wheel Release Arm": ["The handle that opens the locking jaws.", "Point to it and say it is in the locked position with the safety latch engaged."],
+    "Fifth Wheel Skid Plate": ["The greased plate the trailer rests on.", "Point to it and say it is not cracked or broken, it is greased, and there is no gap between it and the trailer apron."],
+    "Fifth Wheel Slide Rails": ["Let the fifth wheel slide to adjust weight between the axles.", "Point to the rails and say they are not damaged and the fifth wheel is far enough forward to clear the landing gear in turns."],
+    "Sliding Fifth Wheel Locking Pins & Release": ["Lock the sliding fifth wheel in place on the rails.", "Point to the pins and say they are present and fully engaged, and the release handle is locked."],
+    "Kingpin": ["The steel pin under the trailer that the fifth wheel jaws lock onto.", "Point to it and say it is not bent or worn and is locked in the jaws."],
+    "Landing Gear (Legs, Pads & Bracing)": ["The legs that hold up the front of the trailer when it is uncoupled.", "Point to them and say they are fully raised, with no missing or damaged parts, and the bracing is in good condition."],
+    "Landing Gear Crank Handle": ["Raises and lowers the landing gear.", "Point to it and say it is secured in its holder."],
+    "Trailer Apron (Upper Coupler Plate)": ["The flat plate under the trailer that sits on the fifth wheel.", "Point to it and say it is not bent, cracked or broken and lies flat on the skid plate with no gap."],
+    // trailer
+    "Trailer Body (Walls, Roof & Front)": ["The trailer's walls, roof and front.", "Point along them and say there are no holes, cracks or other damage, and the panels are secure."],
+    "Trailer Frame, Crossmembers & Slider Rails": ["The beams under the trailer floor and the rails the tandem slides on.", "Point along them and say nothing is bent, cracked, broken or missing."],
+    "Sliding Tandem Locking Pins": ["Lock the sliding tandem axles in place under the trailer.", "Point to the pins and say all are present and fully engaged through the rail holes."],
+    "Sliding Tandem Release Handle": ["Pulls the locking pins so the tandem can slide.", "Point to it and say it is in the locked position and secured."],
+    "Sliding Tandem Subframe": ["The frame that carries the trailer's axles.", "Point to it and say it is not bent, cracked or broken."],
+    "License Plate & Plate Light": ["The trailer's license plate and its light.", "Point to them and say the plate is clean and secure and the light works."],
+    "Rear Impact Guard (ICC Bumper)": ["Keeps cars from sliding under the back of the trailer.", "Point to it and say it is securely mounted, not bent or broken, and the reflective tape is there."],
+    "Trailer Door Hinges": ["Hold the rear doors on.", "Point to them and say all hinges are present, secure, and not cracked."],
+    "Trailer Mud Flaps": ["Stop spray and stones from the trailer tires.", "Point to them and say they are securely mounted, not torn, and not dragging."],
+    "Trailer Rear Door & Lock Rods": ["The rear doors and the rods and handles that latch them.", "Point to the doors, handles and lock rods. Say the doors are closed and latched and nothing is damaged."]
+  };
+  function guideFor(p) {
+    const n = p.norm;
+    let key = n;
+    if (/Spring Brake Chamber$/.test(n)) key = "spring_chamber";
+    else if (/Brake Chamber$/.test(n)) key = "chamber";
+    else if (/Slack Adjuster/.test(n)) key = "slack";
+    else if (/Brake Drum$/.test(n)) key = "drum";
+    else if (/Brake Hoses$/.test(n)) key = "brake_hoses";
+    else if (/^Steer Tire$/.test(n)) key = "tire_steer";
+    else if (/Tire$/.test(n)) key = "tire_dual";
+    else if (/Rim$/.test(n)) key = "rim";
+    else if (/Lug Nuts$/.test(n)) key = "lug";
+    else if (/^Drive Axle Hub/.test(n)) key = "hub_drive";
+    else if (/Hub/.test(n)) key = "hub_oil";
+    else if (/Leaf Spring$/.test(n)) key = "leaf";
+    else if (/Spring Hangers/.test(n)) key = "hangers";
+    else if (/U-Bolts$/.test(n)) key = "ubolts";
+    else if (/Shock Absorber$/.test(n)) key = "shock";
+    else if (/Air Bag$/.test(n)) key = "airbag";
+    else if (/Torque Rods$/.test(n)) key = "torque";
+    else if (/Trailing Arm/.test(n)) key = "trailing";
+    else if (/Air Tank/.test(n)) key = "air_tank";
+    const g = GUIDE[key] || GUIDE[n];
+    return g ? { about: g[0], how: g[1] } : { about: "", how: "Point to it and explain what you are checking." };
+  }
+
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
@@ -156,7 +296,7 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
   let THREE = null, renderer = null, scene = null, camera = null, camTarget = null, ground = null, fadeRay = null;
   let fly = null, sig = "", faded = new Set(), zonesPopulated = false;
   const st = { mode: "find", hood: false, flash: null };
-  const F = { on: false, list: [], i: 0, tries: 0, answered: false, paused: false, timer: 0, results: [] };
+  const F = { on: false, list: [], i: 0, paused: false, total: 1, left: 0, tick: 0 };
   const T = { on: false, list: [], i: 0, step: 0, opts: [], results: [], busy: false };
 
   // ---------- parts ----------
@@ -249,19 +389,6 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
     const box = new THREE.Box3().setFromObject(n), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
     return { c, off: viewDir(p, c).multiplyScalar(THREE.MathUtils.clamp(size * 1.6 + 0.8, 1.2, 24)) };
   }
-  // the area around a part, with its neighbours in view (Find it: you still have to pick it out)
-  function areaView(p) {
-    const n = THREE && nodes.get(p.id); if (!n) return null;
-    const box = new THREE.Box3().setFromObject(n), c0 = box.getCenter(new THREE.Vector3());
-    for (const q of parts) {
-      if (q.zone !== p.zone || q.id === p.id) continue;
-      const m = nodes.get(q.id); if (!m) continue;
-      const b = new THREE.Box3().setFromObject(m);
-      if (b.getCenter(new THREE.Vector3()).distanceTo(c0) < 1.3) box.union(b);
-    }
-    const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3()).length();
-    return { c, off: viewDir(p, c0).multiplyScalar(THREE.MathUtils.clamp(size * 1.25 + 1.2, 2.4, 26)) };
-  }
   function overview(dur) {
     if (!THREE || !camera) return;
     const box = new THREE.Box3();
@@ -292,6 +419,15 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
     faded = next;
   }
 
+  function ghostAllExcept(p) {
+    const root = p && nodes.get(p.id); if (!root) return;
+    const own = new Set(); root.traverse((m) => m.isMesh && own.add(m));
+    const next = new Set(allMeshes.filter((m) => !own.has(m)));
+    for (const m of faded) if (!next.has(m)) restore(m);
+    for (const m of next) if (!faded.has(m)) { m.material.transparent = true; m.material.opacity = 0.1; m.material.depthWrite = false; m.material.needsUpdate = true; }
+    faded = next;
+  }
+
   // ---------- highlighting ----------
   function setEm(id, color, k) {
     for (const m of meshes.get(id) || []) {
@@ -300,7 +436,7 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
     }
   }
   function paint() {
-    const point = T.on && T.list[T.i] ? T.list[T.i].id : null; // the part the examiner points at
+    const point = T.on && T.list[T.i] ? T.list[T.i].id : (F.on && F.list[F.i] ? F.list[F.i].id : null); // the part being shown
     const s = [st.flash && st.flash.id + st.flash.c, point].join("|");
     if (s !== sig) {
       sig = s;
@@ -313,82 +449,71 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
   }
   function setHoodFor(p) { st.hood = !!p && p.zone === "Engine Compartment"; }
 
-  // ---------- FIND IT ----------
+  // ---------- FIND IT (guided walk-around) ----------
+  function readMs(p, g) {
+    const words = (g.about + " " + p.checks + " " + g.how).split(/\s+/).length;
+    return Math.min(30000, Math.max(10000, words * 280));
+  }
   function startFind() {
     const list = pool($("fScope").value); if (!list.length) return;
-    Object.assign(F, { on: true, list, i: 0, results: [], paused: false });
+    Object.assign(F, { on: true, list, i: 0, paused: false });
     $("fPause").textContent = "Pause"; $("fPause").setAttribute("aria-pressed", "false");
     $("fSetup").hidden = true; $("fDone").hidden = true; $("fRun").hidden = false;
+    clearInterval(F.tick);
+    F.tick = setInterval(() => {
+      if (!F.on || F.paused || fly) return;
+      F.left -= 200;
+      $("fTimer").style.width = Math.max(0, 100 * F.left / F.total) + "%";
+      if (F.left <= 0) nextFind();
+    }, 200);
     showFind(); showRun("fRun");
   }
   function showFind() {
-    clearTimeout(F.timer);
-    const p = F.list[F.i];
-    F.tries = 0; F.answered = false; st.flash = null;
+    const p = F.list[F.i], g = guideFor(p);
     setHoodFor(p);
     $("fProg").textContent = `Part ${F.i + 1} of ${F.list.length}`;
     $("fZone").textContent = p.zone;
-    $("fBar").style.width = (100 * F.i / F.list.length) + "%";
-    $("fAsk").textContent = "Find the " + p.norm.toLowerCase();
-    $("fHint").textContent = "Tap it on the truck.";
-    $("fCard").innerHTML = "";
-    callout("Find: " + p.norm);
-    const v = areaView(p);
-    if (v) flyCam(v.c, v.off, false, 1.4, () => fadeInFrontOf(p));
+    $("fBar").style.width = (100 * (F.i + 1) / F.list.length) + "%";
+    $("fTitle").textContent = p.norm;
+    $("fInfo").innerHTML = (g.about ? `<h3>What it is</h3><p>${esc(g.about)}</p>` : "") +
+      `<h3>What to check</h3><p>${esc(p.checks)}</p>` +
+      `<h3>On the test</h3><p class="how">${esc(g.how)}</p>`;
+    $("fBack").disabled = F.i === 0;
+    $("fNext").textContent = F.i === F.list.length - 1 ? "Finish" : "Next";
+    callout(p.norm);
+    F.total = readMs(p, g); F.left = F.total;
+    $("fTimer").style.width = "100%";
+    const v = partView(p);
+    if (v) flyCam(v.c, v.off.multiplyScalar(0.85), false, 1.6, () => ghostAllExcept(p));
   }
-  function findResult(ok, p, text) {
-    F.answered = true;
-    F.results[F.i] = { p, ok };
-    $("fHint").textContent = "";
-    $("fCard").innerHTML = `<div class="card ${ok ? "ok" : "no"}"><div class="tag">${esc(text)}</div><div class="lab">${esc(p.label)}</div><p><b>What to check:</b> ${esc(p.checks)}</p></div>`;
-    callout(p.label);
-    scheduleNext(AUTO_NEXT_MS);
-  }
-  function onTapFind(hit) {
-    if (!F.on || F.answered || fly) return;
-    const p = F.list[F.i];
-    if (hit && hit.norm === p.norm && hit.zone === p.zone) {
-      st.flash = { id: hit.id, c: "#1f8a4c" };
-      findResult(F.tries === 0, p, F.tries === 0 ? "Found it" : "Found it on try " + (F.tries + 1));
-      return;
-    }
-    F.tries++;
-    if (hit) { st.flash = { id: hit.id, c: "#c62f2f" }; toast("That's the " + hit.norm.toLowerCase(), "#c62f2f"); }
-    else toast("Nothing there. Try again.", "#c62f2f");
-    if (F.tries >= 2) {
-      setTimeout(() => { if (F.on && !F.answered) { st.flash = { id: p.id, c: "#f2b705" }; findResult(false, p, "Here it is"); } }, 900);
-    } else {
-      $("fHint").textContent = "Not that one. Try again.";
-      setTimeout(() => { if (F.on && !F.answered && st.flash && st.flash.c === "#c62f2f") st.flash = null; }, 900);
-    }
-  }
-  function scheduleNext(ms) { clearTimeout(F.timer); if (!F.paused) F.timer = setTimeout(nextFind, ms); }
-  function nextFind() {
-    if (!F.on) return;
-    if (!F.answered) F.results[F.i] = { p: F.list[F.i], ok: false, skipped: true };
-    if (F.i < F.list.length - 1) { F.i++; showFind(); } else finishFind();
-  }
+  function nextFind() { if (!F.on) return; if (F.i < F.list.length - 1) { F.i++; showFind(); } else finishFind(); }
+  function prevFind() { if (F.on && F.i > 0) { F.i--; showFind(); } }
   function finishFind() {
-    clearTimeout(F.timer); F.on = false; st.flash = null; setHoodFor(null); callout(""); clearFade();
-    const res = F.results.filter(Boolean), good = res.filter((r) => r.ok).length;
-    const missed = res.filter((r) => !r.ok);
-    $("fRun").hidden = true; $("fDone").hidden = false;
-    $("fDone").innerHTML = `<h2>Done</h2><div class="big">${good} / ${res.length}</div><p class="score">found on the first try</p>
-      ${missed.length ? `<h2>Practice these (${missed.length})</h2>${missed.map((r) => `<div class="miss"><b>${esc(r.p.label)}</b><p>${esc(r.p.checks)}</p></div>`).join("")}` : ""}
-      <div class="row" style="margin-top:14px"><button class="primary" type="button" id="fAgain">Start again</button></div>`;
+    const n = F.list.length;
+    endFind();
+    $("fSetup").hidden = true; $("fDone").hidden = false;
+    $("fDone").innerHTML = `<h2>Walk-around done</h2><p class="lead">You went through ${n} part${n === 1 ? "" : "s"}. When you're ready, try them on the Test tab.</p>
+      <div class="row" style="margin-top:14px"><button class="primary" type="button" id="fToTest">Take the test</button><button type="button" id="fAgain">Start again</button></div>`;
     showRun("fDone");
-    overview(1.2);
   }
+  function endFind() {
+    clearInterval(F.tick); F.on = false; setHoodFor(null); callout(""); clearFade(); sig = "";
+    $("fRun").hidden = true; $("fDone").hidden = true; $("fSetup").hidden = false;
+    overview(1.0);
+  }
+  function stopFind() { endFind(); }
   $("fStart").addEventListener("click", startFind);
-  $("fNext").addEventListener("click", () => { if (F.on && !fly) nextFind(); });
+  $("fNext").addEventListener("click", () => { if (F.on) nextFind(); });
+  $("fBack").addEventListener("click", prevFind);
   $("fPause").addEventListener("click", () => {
     F.paused = !F.paused;
     $("fPause").textContent = F.paused ? "Resume" : "Pause"; $("fPause").setAttribute("aria-pressed", String(F.paused));
-    if (F.paused) clearTimeout(F.timer); else if (F.answered) scheduleNext(1500);
   });
   $("fStop").addEventListener("click", stopFind);
-  $("fDone").addEventListener("click", (e) => { if (e.target.id === "fAgain") { $("fDone").hidden = true; $("fSetup").hidden = false; } });
-  function stopFind() { clearTimeout(F.timer); F.on = false; st.flash = null; setHoodFor(null); callout(""); clearFade(); $("fRun").hidden = true; $("fDone").hidden = true; $("fSetup").hidden = false; overview(1.0); }
+  $("fDone").addEventListener("click", (e) => {
+    if (e.target.id === "fAgain") { $("fDone").hidden = true; $("fSetup").hidden = false; }
+    if (e.target.id === "fToTest") { $("fDone").hidden = true; $("fSetup").hidden = false; setMode("test"); }
+  });
 
   // ---------- TEST (no answers shown until the end) ----------
   function nameOptions(p) {
@@ -530,26 +655,7 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
       camera.position.set(7, 5, 15); camTarget = new THREE.Vector3(-8, 1.5, 0);
       fadeRay = new THREE.Raycaster();
 
-      // taps only pick a part (Find it); the user never moves the camera
-      const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-      function pick(e) {
-        const r = renderer.domElement.getBoundingClientRect();
-        ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-        ray.setFromCamera(ndc, camera);
-        for (const h of ray.intersectObjects(scene.children, true)) {
-          if (faded.has(h.object)) continue;
-          let o = h.object; while (o && !o.userData.inspectable) o = o.parent;
-          if (o) return parts.find((p) => p.id === o.userData.inspect_id) || null;
-          if (h.object === ground) return null;
-        }
-        return null;
-      }
-      let down = null;
-      renderer.domElement.addEventListener("pointerdown", (e) => { down = [e.clientX, e.clientY]; });
-      renderer.domElement.addEventListener("pointerup", (e) => {
-        if (st.mode === "find" && down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) < 10) onTapFind(pick(e));
-        down = null;
-      });
+      // the truck is view-only: no dragging, zooming or tapping
       renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
 
       const resize = () => { const w = host.clientWidth || 1, h = host.clientHeight || 1; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
@@ -597,7 +703,7 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
           populateZones();
           $("status").textContent = "";
           // if a run started before the 3D was ready, move the camera to it now
-          if (F.on && F.list[F.i]) { const v = areaView(F.list[F.i]); if (v) flyCam(v.c, v.off, false, 1.0, () => fadeInFrontOf(F.list[F.i])); }
+          if (F.on && F.list[F.i]) { const p = F.list[F.i], v = partView(p); if (v) flyCam(v.c, v.off.multiplyScalar(0.85), false, 1.0, () => ghostAllExcept(p)); }
           else if (T.on && T.list[T.i]) pointAt(T.list[T.i]);
           else overview(0.9);
           resolve();

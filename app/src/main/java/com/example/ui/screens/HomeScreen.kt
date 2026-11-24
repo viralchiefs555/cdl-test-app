@@ -1225,7 +1225,7 @@ fun PreTripInspectionHomeCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Find every inspection point on a 3D truck, then take a realistic pre-trip test in CDL order.",
+                text = "Walk around a 3D truck part by part to learn what to check and say, then take a realistic pre-trip test in CDL order.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.9f)
             )
