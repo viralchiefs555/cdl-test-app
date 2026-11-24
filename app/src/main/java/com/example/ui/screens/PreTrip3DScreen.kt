@@ -1,11 +1,15 @@
 package com.example.ui.screens
 
 import android.annotation.SuppressLint
+import android.graphics.Color
+import android.view.ViewGroup
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -18,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.ByteArrayInputStream
 
@@ -46,11 +51,15 @@ private fun mimeFor(path: String): String = when (path.substringAfterLast('.', "
 fun PreTrip3DScreen(onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text("3D Pre-Trip Test") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("pretrip3d_back_button")
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -71,22 +80,41 @@ fun PreTrip3DScreen(onBack: () -> Unit) {
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun createInspectionWebView(context: android.content.Context): WebView =
-    WebView(context).apply {
+private fun createInspectionWebView(context: android.content.Context): WebView {
+    val appAssets = context.applicationContext.assets
+    return WebView(context).apply {
+        layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
         settings.allowFileAccess = false
         settings.allowContentAccess = false
-        setBackgroundColor(android.graphics.Color.rgb(223, 228, 232))
+        setBackgroundColor(Color.rgb(223, 228, 232))
+        webChromeClient = WebChromeClient()
         webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 val url = request.url
                 if (url.host != ASSET_HOST) return null // fonts and three.js come from the network as usual
                 val path = url.path?.removePrefix("/assets/") ?: return null
                 return try {
-                    WebResourceResponse(mimeFor(path), if (mimeFor(path).startsWith("text/")) "utf-8" else null, view.context.assets.open(path))
+                    val mime = mimeFor(path)
+                    val encoding = if (mime.startsWith("text/")) "utf-8" else null
+                    val headers = mapOf(
+                        "Access-Control-Allow-Origin" to "*",
+                        "Cache-Control" to "no-cache"
+                    )
+                    WebResourceResponse(mime, encoding, 200, "OK", headers, appAssets.open(path))
                 } catch (e: Exception) {
-                    WebResourceResponse("text/plain", "utf-8", 404, "Not Found", emptyMap(), ByteArrayInputStream(ByteArray(0)))
+                    WebResourceResponse(
+                        "text/plain",
+                        "utf-8",
+                        404,
+                        "Not Found",
+                        emptyMap(),
+                        ByteArrayInputStream(ByteArray(0))
+                    )
                 }
             }
 
@@ -95,3 +123,4 @@ private fun createInspectionWebView(context: android.content.Context): WebView =
         }
         loadUrl(START_URL)
     }
+}

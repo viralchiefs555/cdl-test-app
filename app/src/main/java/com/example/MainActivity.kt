@@ -60,7 +60,13 @@ fun CDLApp(viewModel: CDLViewModel = viewModel()) {
             Screen.HISTORY -> HistoryScreen(viewModel = viewModel)
             Screen.CHEAT_SHEET -> CheatSheetScreen(viewModel = viewModel)
             Screen.AI_REVIEW -> com.example.ui.screens.AiReviewChatScreen(viewModel = viewModel)
-            Screen.PRE_TRIP -> PreTrip3DScreen(onBack = { viewModel.navigateTo(Screen.HOME) })
+            Screen.PRE_TRIP -> PreTrip3DScreen(
+                onBack = {
+                    if (!viewModel.navigateBack()) {
+                        viewModel.navigateTo(Screen.HOME)
+                    }
+                }
+            )
         }
     }
 }
