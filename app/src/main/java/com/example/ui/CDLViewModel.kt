@@ -725,8 +725,11 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun noteAiFailure(e: Throwable, blockMs: Long) {
-        lastAiFailureReason = OfflineCoach.describeFailure(e)
-        aiBlockedUntil = System.currentTimeMillis() + blockMs
+        val reason = OfflineCoach.describeFailure(e)
+        lastAiFailureReason = reason
+        // Busy servers clear up quickly, so only wait a little before trying Gemini again.
+        val wait = if (reason.contains("busy")) 20_000L else blockMs
+        aiBlockedUntil = System.currentTimeMillis() + wait
     }
 
     private fun handleCoachFailure(

@@ -104,7 +104,7 @@ object CoachKnowledge {
     }
 
     /** True when every meaningful word in [query] appears somewhere in the study bank. */
-    fun allWordsKnown(query: String): Boolean = tokenize(query).all { docFreq.containsKey(it) }
+    fun allWordsKnown(query: String): Boolean = repairTerms(tokenize(query)).all { docFreq.containsKey(it) || it.all { c -> c.isDigit() } }
 
     /**
      * Returns the study-bank questions closest to [query], best first. Rare words count for more
@@ -148,8 +148,78 @@ object CoachKnowledge {
      */
     data class Match(val question: Question, val score: Double, val coverage: Double)
 
+    /**
+     * Fixes words the study bank doesn't use, when they are typos of words it does use: two words
+     * run together ("theplacards" -> "placard") or one letter off ("placrds" -> "placard").
+     * Words that still don't match anything are kept, so off-topic questions stay off-topic.
+     */
+    fun repairTerms(terms: Set<String>): Set<String> {
+        val result = LinkedHashSet<String>()
+        for (t in terms) {
+            if (docFreq.containsKey(t) || t.all { it.isDigit() }) {
+                result.add(t)
+                continue
+            }
+            // Two words run together.
+            var split: List<String>? = null
+            for (i in 2..(t.length - 2)) {
+                val left = t.substring(0, i)
+                val right = stem(t.substring(i))
+                val leftOk = left in STOP_WORDS || docFreq.containsKey(stem(left))
+                if (leftOk && docFreq.containsKey(right) && right.length >= 3) {
+                    split = listOfNotNull(if (left in STOP_WORDS) null else stem(left), right)
+                    break
+                }
+            }
+            if (split != null) {
+                result.addAll(split)
+                continue
+            }
+            // One letter off (typo), for longer words only.
+            // Short words only get a missing or extra letter ("chek" -> "check"), not a swapped one,
+            // so a word like "texas" doesn't turn into "text".
+            if (t.length >= 4) {
+                val close = docFreq.keys
+                    .filter {
+                        it.length >= 4 && kotlin.math.abs(it.length - t.length) <= 1 && it[0] == t[0] &&
+                            (t.length >= 5 || it.length != t.length) && withinOneEdit(it, t)
+                    }
+                    .maxByOrNull { docFreq[it] ?: 0 }
+                if (close != null) {
+                    result.add(close)
+                    continue
+                }
+            }
+            result.add(t)
+        }
+        return result
+    }
+
+    private fun withinOneEdit(a: String, b: String): Boolean {
+        if (a == b) return true
+        if (kotlin.math.abs(a.length - b.length) > 1) return false
+        var i = 0
+        var j = 0
+        var edits = 0
+        while (i < a.length && j < b.length) {
+            if (a[i] == b[j]) {
+                i++; j++
+                continue
+            }
+            edits++
+            if (edits > 1) return false
+            when {
+                a.length > b.length -> i++
+                a.length < b.length -> j++
+                else -> { i++; j++ }
+            }
+        }
+        edits += (a.length - i) + (b.length - j)
+        return edits <= 1
+    }
+
     fun retrieveScored(query: String, limit: Int = 3, category: CDLCategory? = null): List<Match> {
-        val terms = tokenize(query)
+        val terms = repairTerms(tokenize(query))
         if (terms.isEmpty()) return emptyList()
         val total = index.size.toDouble().coerceAtLeast(1.0)
         val unknownIdf = ln(1.0 + total)

@@ -5,6 +5,7 @@ import com.example.data.models.MissedQuestionDetail
 import com.example.data.models.Question
 import com.example.data.repository.CDLQuestionRepository
 import com.google.firebase.Firebase
+import com.google.firebase.ai.GenerativeModel
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Content
 import com.google.firebase.ai.type.ResponseStoppedException
@@ -72,45 +73,62 @@ class AiReviewManager {
         }
     }
 
-    /** Short spoken exam debriefs and one-by-one missed-question reviews. */
-    private val debriefModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = MODEL_NAME,
-            generationConfig = generationConfig {
-                temperature = 0.4f
-                // Generous on purpose: newer Gemini models count their hidden "thinking" against
-                // this limit, and running out makes the SDK throw instead of answering. The
-                // prompts keep the spoken answers short.
-                maxOutputTokens = 8192
-            },
-            systemInstruction = content {
-                text(
-                    "You are Coach Mac, a warm, encouraging, safety-focused CDL instructor speaking out loud to a student driver.\n\n" +
-                        GROUNDING_RULES +
-                        "\n\nLength: exam debriefs and missed-question reviews stay under 70 words, two to four sentences."
+    /**
+     * Gemini models to try in order. When one is overloaded ("high demand") or unavailable before it
+     * has said anything, Coach Mac moves on to the next instead of giving up.
+     */
+    private val modelChain = listOf(MODEL_NAME, "gemini-3.6-flash", "gemini-3.5-flash-lite")
+
+    private val models = HashMap<String, GenerativeModel>()
+
+    private val debriefInstruction =
+        "You are Coach Mac, a warm, encouraging, safety-focused CDL instructor speaking out loud to a student driver.\n\n" +
+            GROUNDING_RULES +
+            "\n\nLength: exam debriefs and missed-question reviews stay under 70 words, two to four sentences."
+
+    private val tutorInstruction =
+        "You are Coach Mac, a warm, encouraging, safety-focused CDL instructor speaking out loud to a student driver.\n\n" +
+            GROUNDING_RULES +
+            "\n\nLength: answer questions completely but compactly, usually 40 to 120 words. " +
+            "A study plan can run up to 180 words, describing each day in one plain sentence. " +
+            "Quiz feedback stays under 60 words."
+
+    /** Short debriefs and missed-question reviews, or open answers, plans and quiz grading. */
+    private fun modelFor(name: String, mode: CoachMode): GenerativeModel {
+        val debrief = mode == CoachMode.DEBRIEF
+        val key = "$name|$debrief"
+        return synchronized(models) {
+            models.getOrPut(key) {
+                Firebase.ai.generativeModel(
+                    modelName = name,
+                    generationConfig = generationConfig {
+                        temperature = if (debrief) 0.4f else 0.3f
+                        // Generous on purpose: newer Gemini models count their hidden "thinking"
+                        // against this limit, and running out makes the SDK throw instead of
+                        // answering. The prompts keep the spoken answers short.
+                        maxOutputTokens = 8192
+                    },
+                    systemInstruction = content { text(if (debrief) debriefInstruction else tutorInstruction) }
                 )
             }
-        )
+        }
     }
 
-    /** Open questions, study plans and quiz grading: room for a complete answer. */
-    private val tutorModel by lazy {
-        Firebase.ai.generativeModel(
-            modelName = MODEL_NAME,
-            generationConfig = generationConfig {
-                temperature = 0.3f
-                maxOutputTokens = 8192
-            },
-            systemInstruction = content {
-                text(
-                    "You are Coach Mac, a warm, encouraging, safety-focused CDL instructor speaking out loud to a student driver.\n\n" +
-                        GROUNDING_RULES +
-                        "\n\nLength: answer questions completely but compactly, usually 40 to 120 words. " +
-                        "A study plan can run up to 180 words, describing each day in one plain sentence. " +
-                        "Quiz feedback stays under 60 words."
-                )
+    /** True for errors where another model might work: overloaded, unavailable, or not found. */
+    private fun worthTryingAnotherModel(e: Throwable): Boolean {
+        val text = buildString {
+            var t: Throwable? = e
+            var depth = 0
+            while (t != null && depth < 5) {
+                append(t.javaClass.simpleName).append(' ').append(t.message ?: "").append(' ')
+                t = t.cause
+                depth++
             }
-        )
+        }.lowercase()
+        return text.contains("high demand") || text.contains("overloaded") || text.contains("unavailable") ||
+            text.contains("503") || text.contains("500") || text.contains("try again later") ||
+            text.contains("not found") || text.contains("404") || text.contains("serverexception") ||
+            text.contains("resource_exhausted") || text.contains("429") || text.contains("quota")
     }
 
     private fun letter(index: Int): String = LETTERS.getOrNull(index)?.toString() ?: "${index + 1}"
@@ -340,20 +358,33 @@ class AiReviewManager {
         }
         contents.add(content("user") { text(newPrompt) })
 
-        val model = if (mode == CoachMode.DEBRIEF) debriefModel else tutorModel
         val timeoutMs = if (mode == CoachMode.DEBRIEF) 25_000L else 40_000L
 
         var emittedAny = false
+        var lastError: Throwable? = null
         try {
-            withTimeout(timeoutMs) {
-                model.generateContentStream(contents).collect { chunk ->
-                    val chunkText = chunk.text
-                    if (!chunkText.isNullOrEmpty()) {
-                        emittedAny = true
-                        emit(chunkText)
+            for (name in modelChain) {
+                try {
+                    withTimeout(timeoutMs) {
+                        modelFor(name, mode).generateContentStream(contents).collect { chunk ->
+                            val chunkText = chunk.text
+                            if (!chunkText.isNullOrEmpty()) {
+                                emittedAny = true
+                                emit(chunkText)
+                            }
+                        }
                     }
+                    return@flow
+                } catch (e: ResponseStoppedException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.TimeoutCancellationException) throw e
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    if (emittedAny || !worthTryingAnotherModel(e)) throw e
+                    lastError = e
                 }
             }
+            throw lastError ?: IllegalStateException("No Gemini model answered")
         } catch (e: ResponseStoppedException) {
             // Stopped early (for example the length limit). Keep what was already said rather
             // than throwing it away; with nothing said, report the failure as usual.

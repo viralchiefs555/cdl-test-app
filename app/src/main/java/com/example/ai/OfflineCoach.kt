@@ -47,6 +47,9 @@ class OfflineCoach {
             }
             val lower = text.lowercase()
             return when {
+                lower.contains("high demand") || lower.contains("overloaded") || lower.contains("503") ||
+                    lower.contains("unavailable") || lower.contains("try again later") ->
+                    "Gemini is busy right now (high demand), so try again in a minute"
                 lower.contains("unknownhost") || lower.contains("unable to resolve host") ||
                     lower.contains("connectexception") || lower.contains("no address associated") ->
                     "no internet connection"
