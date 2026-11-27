@@ -118,6 +118,7 @@ fun AiReviewChatScreen(
     val isSpeaking by viewModel.ttsManager.isSpeaking.collectAsState()
     val isMuted by viewModel.ttsManager.isMuted.collectAsState()
     val speechRate by viewModel.ttsManager.speechRate.collectAsState()
+    val voiceLabel by viewModel.ttsManager.voiceLabel.collectAsState()
 
     var inputPrompt by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -338,6 +339,36 @@ fun AiReviewChatScreen(
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
             ) {
+                // Voice picker: tap to hear the next voice
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.cycleVoice() }
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .testTag("voice_picker_row"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Voice: $voiceLabel",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "Change",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
                 // Quick prompt suggestions
                 QuickPromptChips(
                     categoryName = aiState.activeReviewResult?.category?.shortName ?: "Exam",

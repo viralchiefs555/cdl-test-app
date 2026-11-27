@@ -1271,6 +1271,18 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.toggleMute()
     }
 
+    /** Switches Coach Mac to the next voice and plays a short sample of it. */
+    fun cycleVoice() {
+        val label = ttsManager.cycleVoice()
+        suppressSpeechThisTurn = false
+        val sample = if (ttsManager.isStudioVoiceSelected) {
+            "Hey driver, Coach Mac here. This is my studio voice. How does it sound?"
+        } else {
+            "Hey driver, Coach Mac here. This is ${label.lowercase()}. How does it sound?"
+        }
+        ttsManager.speak(sample, TextToSpeech.QUEUE_FLUSH)
+    }
+
     fun cycleTtsSpeed(): Float {
         return ttsManager.cycleSpeed()
     }
