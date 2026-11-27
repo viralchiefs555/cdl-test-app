@@ -1,0 +1,11 @@
+Sound sources for the In-Cab & Air Brake Check (trimmed, mixed and re-encoded for the app).
+All downloaded from Pixabay (https://pixabay.com/service/license-summary/): free for commercial use, no attribution required.
+Most were contributed to Pixabay from Freesound by "freesound_community"; original authors are listed for credit.
+
+idle_loop.ogg     "Diesel Truck Idling Front.wav" by ibirdfilm (Freesound)        https://pixabay.com/sound-effects/city-diesel-truck-idling-frontwav-14418/
+engine_start.ogg  "Diesel Start-Idle-Revs MZ000004" by DAVESTALKER (Freesound)   https://pixabay.com/sound-effects/city-diesel-start-idle-revs-mz000004-29891/
+engine_stop.ogg   "FORD LTL 9000_back up and engine shutdown" by Broken_Head_Productions (Freesound)  https://pixabay.com/sound-effects/technology-ford-ltl-9000-back-up-and-engine-shutdown-22908/
+air_purge.ogg     "air_brakes_loud_fade_out" by rabbydaw (Freesound)              https://pixabay.com/sound-effects/film-special-effects-air-brakes-loud-fade-out-96993/
+air_exhaust.ogg   "air_brakes_loud_fade_out" by rabbydaw (Freesound)              (same source, short cut)
+air_supply.ogg    "tractor connecting to trailer with air brk" by goose278 (Freesound)  https://pixabay.com/sound-effects/film-special-effects-tractor-connecting-to-trailer-with-air-brk-89510/
+horn.ogg          "Truck Horn" by Universfield                                    https://pixabay.com/sound-effects/city-truck-horn-153263/

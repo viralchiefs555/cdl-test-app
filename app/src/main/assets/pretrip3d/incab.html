@@ -330,6 +330,7 @@ button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;ba
       oil: 0, coolant: 150, volts: 12.4, speed: 0, bulbUntil: 0, governorCut: false, warnOn: false, lastPop: "",
       left: false, right: false, hazard: false, high: false, timeScale: 1, simT: 0, fault: fault || null, events: [] });
     spec();
+    snd.kill();
   }
   let SP = Object.assign({}, SPEC);
   function spec() {
@@ -346,7 +347,7 @@ button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;ba
     if (k === S.key && !(k === "on" && S.engine)) return;
     if (k === "start") {
       if (S.engine) return;
-      S.key = "on"; S.engine = true; S.bulbUntil = S.simT + 2.5; logEv("start"); snd.crank();
+      S.key = "on"; S.engine = true; S.bulbUntil = S.simT + 2.5; logEv("start");
     } else if (k === "on") {
       if (S.engine) { S.engine = false; S.fastIdle = false; logEv("engineOff"); }
       else S.bulbUntil = S.simT + 2.0;
@@ -354,14 +355,16 @@ button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;ba
     } else { S.key = "off"; if (S.engine) logEv("engineOff"); S.engine = false; S.fastIdle = false; }
     S.governorCut = false;
   }
-  function pressPedal(down) {
+  function pressPedal(down, quiet) {
     if (down === S.pedal) return;
     S.pedal = down;
     if (down) { S.p -= SP.applyDrop * 0.6; S.s -= SP.applyDrop * 0.6; logEv("apply"); }
     else logEv("release");
+    if (!quiet) snd.pedal(down);
   }
   function pump() {
-    if (S.pedal) pressPedal(false);
+    if (S.pedal) pressPedal(false, true);
+    snd.fan();
     S.p -= SP.fanDrop; S.s -= SP.fanDrop * 0.95; S.pumps++; logEv("pump");
     animPedal = 1;
     checkPops();
@@ -374,13 +377,13 @@ button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;ba
     // pushing either valve in uses a little air
     if (!out) { S.p -= 1.2; S.s -= 1.2; }
     logEv(which + (out ? "Out" : "In"));
-    snd.pop(out ? 0.6 : 0.3);
+    snd.valve(out);
     return true;
   }
   function checkPops() {
     const a = minAir();
-    if (!S.redOut && a <= SP.redPop) { S.redOut = true; logEv("redPop"); snd.pop(1); S.lastPop = "red"; }
-    if (!S.yellowOut && a <= SP.yellowPop) { S.yellowOut = true; logEv("yellowPop"); snd.pop(1); S.lastPop = "yellow"; }
+    if (!S.redOut && a <= SP.redPop) { S.redOut = true; logEv("redPop"); snd.springPop(); S.lastPop = "red"; }
+    if (!S.yellowOut && a <= SP.yellowPop) { S.yellowOut = true; logEv("yellowPop"); setTimeout(() => snd.springPop(), 120); S.lastPop = "yellow"; }
   }
   let DEBUG_SCALE = 1;
   function stepSim(dtReal) {
@@ -412,6 +415,7 @@ button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;ba
     if (warnNow && !S.warnOn) logEv("warn");
     S.warnOn = warnNow;
     checkPops();
+    snd.engine(S.engine, S.rpm);
     // speed for the service brake check
     if (serviceT > 0) {
       serviceT -= dtReal;
@@ -424,9 +428,36 @@ button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;ba
   // =============================================================================================
   // Sound (Web Audio; created on the first tap)
   // =============================================================================================
+  // Real recordings (sounds/*.ogg, public domain / Pixabay license), with synthesized fallbacks
   const snd = (function () {
-    let ctx = null, buzz = null;
-    function ac() { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) {} } if (ctx && ctx.state === "suspended") ctx.resume(); return ctx; }
+    let ctx = null, buzz = null, master = null, loading = false;
+    const FILES = { idle: "idle_loop", start: "engine_start", stop: "engine_stop", purge: "air_purge", exhaust: "air_exhaust", supply: "air_supply", horn: "horn" };
+    const buf = {};
+    const IDLE_VOL = 0.42;
+    let eng = null, engOn = false;
+    function ac() {
+      if (!ctx) {
+        try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) {}
+        if (ctx) { master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination); load(); }
+      }
+      if (ctx && ctx.state === "suspended" && !document.hidden) ctx.resume();
+      return ctx;
+    }
+    function load() {
+      if (loading) return; loading = true;
+      for (const [k, f] of Object.entries(FILES)) {
+        fetch("sounds/" + f + ".ogg").then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+          .then((a) => new Promise((res, rej) => ctx.decodeAudioData(a, res, rej)))
+          .then((b) => { buf[k] = b; }).catch(() => {});
+      }
+    }
+    function play(k, vol, rate, delay) {
+      const b = buf[k]; if (!ctx || !b) return null;
+      const src = ctx.createBufferSource(), g = ctx.createGain();
+      src.buffer = b; src.playbackRate.value = rate || 1; g.gain.value = vol;
+      src.connect(g); g.connect(master); src.start(ctx.currentTime + (delay || 0));
+      return { src, g };
+    }
     function noise(dur, vol, freq) {
       const c = ac(); if (!c) return;
       const n = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate), d = n.getChannelData(0);
@@ -434,24 +465,64 @@ button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;ba
       const src = c.createBufferSource(); src.buffer = n;
       const f = c.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = 0.7;
       const g = c.createGain(); g.gain.value = vol;
-      src.connect(f); f.connect(g); g.connect(c.destination); src.start();
+      src.connect(f); f.connect(g); g.connect(master); src.start();
     }
     function tone(fr, dur, vol, type) {
       const c = ac(); if (!c) return;
       const o = c.createOscillator(), g = c.createGain(); o.type = type || "sawtooth"; o.frequency.value = fr;
       g.gain.setValueAtTime(vol, c.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
-      o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime + dur);
+      o.connect(g); g.connect(master); o.start(); o.stop(c.currentTime + dur);
     }
+    const click = (v) => noise(0.03, v || 0.25, 3200);
+    // idle loop, faded in after `delay` seconds
+    function startLoop(delay) {
+      if (!buf.idle) return false;
+      const src = ctx.createBufferSource(), g = ctx.createGain(), t = ctx.currentTime + delay;
+      src.buffer = buf.idle; src.loop = true; src.loopStart = 0; src.loopEnd = buf.idle.duration;
+      g.gain.setValueAtTime(0, ctx.currentTime); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(IDLE_VOL, t + 0.6);
+      src.connect(g); g.connect(master); src.start(t, Math.random() * 6);
+      eng = { src, g }; return true;
+    }
+    function stopLoop(fade) {
+      if (!eng) return;
+      const t = ctx.currentTime, g = eng.g.gain;
+      g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + fade);
+      try { eng.src.stop(t + fade + 0.05); } catch (_) {}
+      eng = null;
+    }
+    function engineStarted() {
+      if (buf.start) { play("start", IDLE_VOL * 1.05); startLoop(2.5); }
+      else { for (let i = 0; i < 6; i++) setTimeout(() => noise(0.12, 0.25, 220), i * 140); startLoop(0.9); }
+    }
+    function engineStopped() { stopLoop(0.25); play("stop", IDLE_VOL * 1.1); }
+    // shown when the page is hidden: never keep the engine running in the background
+    document.addEventListener("visibilitychange", () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else ctx.resume(); });
     return {
       unlock: ac,
-      pop: (k) => noise(0.35 * k + 0.1, 0.5 * k + 0.1, 2400),
-      purge: () => noise(1.4, 0.7, 1800),
-      crank: () => { for (let i = 0; i < 6; i++) setTimeout(() => noise(0.12, 0.25, 220), i * 140); },
+      debug: () => ({ ctx: ctx ? ctx.state : null, loaded: Object.keys(buf), engineLoop: !!eng, rate: eng ? +eng.src.playbackRate.value.toFixed(2) : null }),
+      // called every frame with the truck state
+      engine(on, rpm) {
+        if (!ctx) { engOn = on; return; }
+        if (on && !engOn) { engOn = true; engineStarted(); }
+        else if (!on && engOn) { engOn = false; engineStopped(); }
+        if (on && !eng) startLoop(0);
+        if (eng) {
+          const k = Math.max(0, Math.min(1, (rpm - 650) / 1000));
+          eng.src.playbackRate.setTargetAtTime(1 + 0.42 * k, ctx.currentTime, 0.25);
+        }
+      },
+      // silent reset (tab change, new run)
+      kill() { engOn = false; if (ctx) stopLoop(0.08); },
+      valve(out) { if (!(out ? play("exhaust", 0.85, 1.05) : play("supply", 0.75))) noise(out ? 0.45 : 0.25, out ? 0.5 : 0.3, 2400); click(0.3); },
+      springPop() { if (!play("exhaust", 1.0, 0.92)) noise(0.5, 0.6, 2400); click(0.45); },
+      pedal(down) { if (down) { if (!play("supply", 0.4, 1.2)) noise(0.2, 0.15, 2600); } else if (!play("exhaust", 0.6, 1.1)) noise(0.3, 0.3, 2400); },
+      fan() { if (!play("supply", 0.3, 1.25)) noise(0.15, 0.12, 2600); if (!play("exhaust", 0.6, 1.0 + Math.random() * 0.12, 0.22)) setTimeout(() => noise(0.3, 0.3, 2400), 220); },
+      purge: () => { if (!play("purge", 1.0)) noise(1.4, 0.7, 1800); },
       horn: () => { tone(311, 0.9, 0.18); tone(370, 0.9, 0.14); },
-      airHorn: () => { tone(185, 1.1, 0.2); tone(233, 1.1, 0.15, "square"); },
+      airHorn: () => { if (!play("horn", 0.9)) { tone(185, 1.1, 0.2); tone(233, 1.1, 0.15, "square"); } },
       setBuzzer: (on) => {
         const c = ctx; if (!c) return;
-        if (on && !buzz) { const o = c.createOscillator(), g = c.createGain(); o.type = "square"; o.frequency.value = 420; g.gain.value = 0.06; o.connect(g); g.connect(c.destination); o.start(); buzz = { o, g }; }
+        if (on && !buzz) { const o = c.createOscillator(), g = c.createGain(); o.type = "square"; o.frequency.value = 420; g.gain.value = 0.06; o.connect(g); g.connect(master); o.start(); buzz = { o, g }; }
         if (!on && buzz) { try { buzz.o.stop(); } catch (_) {} buzz = null; }
       },
     };
@@ -1241,7 +1312,7 @@ button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;ba
   $("tabTest").addEventListener("click", () => setMode("test"));
 
   // automated testing only: incab.html?debug speeds up the simulation clock
-  if (/[?&]debug\b/.test(location.search)) window.__incab = { S, SP: () => SP, fast: (k) => { DEBUG_SCALE = k; }, tut: () => ({ on: TU.on, i: TU.i, n: TUT.length, air: A.i, target: TUT[TU.i] && TUT[TU.i].target, text: $("tutText").textContent }) };
+  if (/[?&]debug\b/.test(location.search)) window.__incab = { S, snd, SP: () => SP, fast: (k) => { DEBUG_SCALE = k; }, tut: () => ({ on: TU.on, i: TU.i, n: TUT.length, air: A.i, target: TUT[TU.i] && TUT[TU.i].target, text: $("tutText").textContent }) };
   // let the app open a specific tab: incab.html#air or #test
   const h = (location.hash || "").replace("#", "");
   if (h === "air" || h === "test") setTimeout(() => setMode(h), 0);
