@@ -35,6 +35,7 @@ import com.example.ai.OfflineCoach
 import com.example.ai.QuizFocus
 import com.example.ai.StudentData
 import com.example.ai.TtsManager
+import com.example.ai.readAppCheckDebugToken
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 
@@ -60,7 +61,9 @@ data class AiReviewState(
     val currentMissedIndex: Int? = null,
     val quiz: QuizState? = null,
     val liveStatus: LiveVoiceStatus = LiveVoiceStatus.OFF,
-    val liveError: String? = null
+    val liveError: String? = null,
+    /** In test builds, the App Check debug token to add in the Firebase console when App Check rejects the app. */
+    val appCheckDebugToken: String? = null
 )
 
 /** A Coach Mac voice quiz in progress. */
@@ -736,12 +739,14 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         val text = fallback?.invoke() ?: aiReviewManager.offlineNotice()
         lastFailedRequest = retry
         val why = reason.ifBlank { "the AI couldn't be reached" }
+        val debugToken = if (why.contains("App Check")) readAppCheckDebugToken(getApplication<Application>()) else null
         updateAi {
             it.copy(
                 isLoading = false,
                 streamingText = "",
                 messages = displayMessages + ChatMessage(sender = MessageSender.AI, text = text),
-                error = "Coach Mac answered from your study guide because $why."
+                error = "Coach Mac answered from your study guide because $why.",
+                appCheckDebugToken = debugToken
             )
         }
         speakIfAuto(text)

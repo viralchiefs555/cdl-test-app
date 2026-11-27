@@ -85,7 +85,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -556,6 +561,7 @@ fun AiReviewChatScreen(
                             .fillMaxWidth()
                             .testTag("study_guide_mode_notice")
                     ) {
+                      Column {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -595,6 +601,10 @@ fun AiReviewChatScreen(
                                 Text("Try AI", fontWeight = FontWeight.Bold)
                             }
                         }
+                        aiState.appCheckDebugToken?.let { token ->
+                            AppCheckTokenHelp(token = token)
+                        }
+                      }
                     }
                 }
             }
@@ -1307,6 +1317,49 @@ fun QuizStatusCard(
                 modifier = Modifier.testTag("stop_quiz_button")
             ) {
                 Text("Stop")
+            }
+        }
+    }
+}
+
+/**
+ * Test builds only: shows the App Check debug token so it can be added in the Firebase console,
+ * which lets this install use the AI.
+ */
+@Composable
+fun AppCheckTokenHelp(token: String) {
+    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, bottom = 10.dp)
+            .testTag("app_check_token_help")
+    ) {
+        Text(
+            text = "To turn the AI on for this test install, add this debug token in the Firebase console: " +
+                "App Check > Apps > your Android app > Manage debug tokens > Add debug token.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SelectionContainer(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = token,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            TextButton(
+                onClick = {
+                    clipboard.setText(AnnotatedString(token))
+                    Toast.makeText(context, "Debug token copied", Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.testTag("copy_app_check_token_button")
+            ) {
+                Text("Copy", fontWeight = FontWeight.Bold)
             }
         }
     }

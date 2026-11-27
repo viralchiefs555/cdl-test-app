@@ -72,3 +72,20 @@ fun configureAppCheck(context: Context, intent: Intent?) {
         Log.e(TAG, "Failed to initialize Firebase App Check", e)
     }
 }
+
+/**
+ * The App Check debug token this test build uses, so it can be added to the Firebase console
+ * (App Check > Apps > Manage debug tokens). Null in release builds or before one exists.
+ */
+fun readAppCheckDebugToken(context: Context): String? {
+    if (!BuildConfig.DEBUG) return null
+    return try {
+        val persistenceKey = FirebaseApp.getInstance().persistenceKey
+        context.getSharedPreferences("$DEBUG_STORE_PREFIX$persistenceKey", Context.MODE_PRIVATE)
+            .getString(DEBUG_SECRET_KEY, null)
+            ?.takeIf { it.isNotBlank() }
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not read the App Check debug token", e)
+        null
+    }
+}
