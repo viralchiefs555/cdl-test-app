@@ -452,7 +452,7 @@ select{font:16px Barlow,sans-serif;width:100%;min-height:44px;padding:6px 10px;b
   // ---------- FIND IT (guided walk-around) ----------
   function readMs(p, g) {
     const words = (g.about + " " + p.checks + " " + g.how).split(/\s+/).length;
-    return Math.min(30000, Math.max(10000, words * 280));
+    return Math.min(60000, Math.max(20000, words * 500 + 6000));
   }
   function startFind() {
     const list = pool($("fScope").value); if (!list.length) return;

@@ -84,6 +84,9 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
 .miss.ok{border-left-color:var(--ok)}
 .auto{background:rgba(198,47,47,.14);border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin:8px 0;font-weight:600}
 .clock{font:700 30px/1 "Barlow Condensed",sans-serif;text-align:center;margin:8px 0}
+.help{border:1px solid var(--yellow);background:var(--sel);border-radius:10px;padding:4px 14px 14px;margin-top:12px}
+.help h2{margin-top:10px}.help h3{font:600 14px/1.2 Barlow,sans-serif;color:var(--muted);margin:12px 0 4px}
+.help p,.help li{font-size:15px;line-height:1.45}.help ol{margin:0 0 8px;padding-left:20px}.help li{margin-bottom:4px}
 @media(max-width:860px){
   html,body{height:auto;min-height:100%}body{display:block}main{display:block}
   #view{position:sticky;top:0;z-index:1;height:max(300px,44vh);min-height:300px}
@@ -137,7 +140,31 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
       <div id="aSetup">
         <h2>Air brake check, hands-on</h2>
         <p class="lead">Do the whole check yourself with the truck's real controls: start the engine, build air to governor cut-out, run the one-minute leak test, fan the brakes down to the low-air warning and the spring brakes, then the parking and service brake checks. The gauges move like the real thing. On the California test, getting the air brake check wrong is an automatic failure.</p>
-        <button class="primary" id="aStart" type="button">Start the air brake check</button>
+        <div class="row"><button class="primary" id="aStart" type="button">Start the air brake check</button><button id="aHelpBtn" type="button" aria-pressed="false">Help</button></div>
+      </div>
+      <div id="aHelp" class="help" hidden>
+        <h2>How to do the air brake check</h2>
+        <h3>The controls</h3>
+        <p><b>Key on / start, Start engine, Engine off (key on):</b> one button that turns the key. With the engine running it shuts the engine off but leaves the key on, which is what the leak and warning tests need.</p>
+        <p><b>Fast idle:</b> raises the engine speed so air builds faster. Only works with the engine running.</p>
+        <p><b>Yellow (parking brake) and Red (trailer air supply):</b> tap to push a knob in (release) or pull it out (apply). You can't push them in below about 65 psi.</p>
+        <p><b>Press &amp; hold brake:</b> holds the foot brake down until you tap it again. <b>Pump brake (fan):</b> one quick press and release; tap it over and over to fan the air down.</p>
+        <p><b>Speed up time 4×:</b> makes waiting for air and the one-minute leak test go 4 times faster. The numbers stay the same.</p>
+        <p>The two boxes at the bottom of the 3D view show the primary and secondary air pressure. They turn red when the low-air warning is on.</p>
+        <h3>The steps</h3>
+        <ol>
+          <li><b>Set up:</b> both knobs out, then tap Key on / start. Watch every dash light come on and go out.</li>
+          <li><b>Governor cut-out:</b> tap Fast idle and wait. When the air stops climbing and you hear the "pssht", the governor cut out (about 125 psi; California: 120 to 140).</li>
+          <li><b>Leak test:</b> tap Engine off (key on), push in Yellow and Red, then Press &amp; hold brake. After the needle settles, a one-minute clock starts. A combination can lose no more than 4 psi.</li>
+          <li><b>Low-air warning:</b> tap Release brake, then tap Pump brake again and again. The LOW AIR light and buzzer must come on before 55 psi.</li>
+          <li><b>Spring brakes:</b> keep pumping. The red knob pops out, then the yellow, between 20 and 45 psi.</li>
+          <li><b>Rebuild air:</b> start the engine and build back to 100 psi or more.</li>
+          <li><b>Tractor parking brake:</b> Yellow out, Red in, then "Gently pull forward". The truck should hold.</li>
+          <li><b>Trailer parking brake:</b> Yellow in, Red out, then "Gently pull forward". The trailer should hold.</li>
+          <li><b>Service brake:</b> both knobs in, then "Pull forward at 5 mph and brake". It should stop straight.</li>
+        </ol>
+        <p>After each part, answer the question to show you know the rule. The yellow box tells you what to do next and turns green when it's done. On the real test you must also say each step out loud; use the "What to say" lines.</p>
+        <button id="aHelpClose" type="button">Close help</button>
       </div>
       <div id="aRun" hidden>
         <div class="prog"><span id="aProg"></span><span id="aPart"></span></div>
@@ -147,6 +174,7 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
         <div id="aClock" class="clock" hidden></div>
         <div class="ctl" id="aCtl"></div>
         <div class="row" style="margin-top:12px">
+          <button id="aHelpBtn2" type="button" aria-pressed="false">Help</button>
           <button id="aFast" type="button" aria-pressed="false">Speed up time 4×</button>
           <button id="aNext" type="button" disabled>Next step</button>
           <button id="aQuit" type="button">Stop</button>
@@ -704,7 +732,8 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
     callout(s.title);
     look(s.id);
     if (s.act) runAct(s.act);
-    L.left = s.ms; L.total = s.ms;
+    const words = (s.what + " " + s.check + " " + s.say).split(/\s+/).length;
+    L.total = Math.min(60000, Math.max(20000, words * 500 + 6000)); L.left = L.total;
   }
   uiTickers.push((dt) => {
     if (!L.on || L.paused) return;
@@ -814,6 +843,7 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
       say: "\"Pulling forward at 5 miles per hour and applying the service brake firmly. No pulling to either side, no delay.\"" },
   ];
   function startAir() {
+    toggleHelp(false);
     resetSim(); A.on = true; A.i = 0; A.leakResult = null; A.leakStart = null; A.tug = null; A.svc = false; A.answered = false;
     hudShown = true; S.p = 72; S.s = 70;
     $("aSetup").hidden = true; $("aDone").hidden = true; $("aRun").hidden = false; showAir();
@@ -887,6 +917,15 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
     if (A._done !== wasDone) renderAirBody();
   });
   $("aStart").addEventListener("click", startAir);
+  function toggleHelp(show) {
+    const h = $("aHelp"), on = show === undefined ? h.hidden : show;
+    h.hidden = !on;
+    for (const id of ["aHelpBtn", "aHelpBtn2"]) { $(id).setAttribute("aria-pressed", String(on)); $(id).textContent = on ? "Hide help" : "Help"; }
+    if (on && h.scrollIntoView) h.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+  $("aHelpBtn").addEventListener("click", () => toggleHelp());
+  $("aHelpBtn2").addEventListener("click", () => toggleHelp());
+  $("aHelpClose").addEventListener("click", () => toggleHelp(false));
   $("aNext").addEventListener("click", () => { if (A.i < AIR_STEPS.length - 1) { A.i++; A._done = undefined; showAir(); } else finishAir(); });
   $("aQuit").addEventListener("click", () => { A.on = false; callout(""); hudShown = false; $("aRun").hidden = true; $("aSetup").hidden = false; look("driver"); });
   $("aFast").addEventListener("click", () => { const on = S.timeScale === 1; S.timeScale = on ? 4 : 1; $("aFast").setAttribute("aria-pressed", String(on)); });
