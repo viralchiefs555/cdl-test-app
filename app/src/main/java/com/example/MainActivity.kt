@@ -67,6 +67,15 @@ fun CDLApp(viewModel: CDLViewModel = viewModel()) {
                     }
                 }
             )
+            Screen.IN_CAB_CHECK -> PreTrip3DScreen(
+                page = "incab.html",
+                title = "In-Cab & Air Brake Check",
+                onBack = {
+                    if (!viewModel.navigateBack()) {
+                        viewModel.navigateTo(Screen.HOME)
+                    }
+                }
+            )
         }
     }
 }

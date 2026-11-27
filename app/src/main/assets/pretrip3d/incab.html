@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>In-Cab &amp; Air Brake Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: a working tool for a driver studying for the California CDL vehicle inspection test; plain, direct, shop-floor.
+IDEA: sitting in the driver's seat with the examiner: the camera looks where the examiner points, the gauges really move.
+PICTURE: the cab interior of the 3D tractor, moved only by the app, never by the user.
+COLOUR and TYPE: asphalt, safety yellow, white clipboard paper; Barlow Condensed headings, Barlow body. Same system as the walk-around.
+LAYOUT: 3D cab on top (left on wide screens), clipboard panel with three tabs: Learn, Air brake check, Test.
+*/
+:root{
+  color-scheme:light dark;
+  --bg:#e9ecef;--ink:#15191c;--paper:#ffffff;--line:#d3d8dc;--muted:#5a646b;--soft:#f3f5f7;
+  --sel:#fff6d6;--yellow:#f2b705;--asphalt:#1d2226;--ok:#1f8a4c;--bad:#c62f2f;--blue:#2f7bff;
+}
+:root[data-theme=light]{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark;--bg:#14181b;--ink:#eef1f3;--paper:#1e2428;--line:#323a40;--muted:#a3adb4;--soft:#252c31;--sel:#3a3214}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14181b;--ink:#eef1f3;--paper:#1e2428;--line:#323a40;--muted:#a3adb4;--soft:#252c31;--sel:#3a3214}}
+[hidden]{display:none!important}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Barlow,system-ui,sans-serif;overflow-x:hidden;display:flex;flex-direction:column;-webkit-user-select:none;user-select:none}
+main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 420px;min-height:0}
+#view{position:relative;min-height:300px;background:#1b1f22;overflow:hidden}
+#view canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:manipulation}
+#status{position:absolute;left:12px;bottom:12px;background:rgba(29,34,38,.85);color:#fff;font-size:13px;padding:6px 10px;border-radius:6px;pointer-events:none;max-width:calc(100% - 24px)}
+#status:empty{display:none}
+#callout{position:absolute;left:12px;top:12px;right:12px;display:none;pointer-events:none;z-index:2}
+#callout span{display:inline-block;background:var(--asphalt);color:#fff;border-left:5px solid var(--yellow);padding:7px 12px;border-radius:6px;font:600 16px/1.25 Barlow,sans-serif;max-width:100%}
+#hud{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;z-index:2;pointer-events:none}
+#hud div{background:rgba(20,23,26,.88);color:#fff;border-radius:8px;padding:5px 9px;font:600 13px/1.15 Barlow,sans-serif;text-align:center;min-width:64px}
+#hud b{display:block;font:700 20px/1 "Barlow Condensed",sans-serif}
+#hud .warn{background:#b3261e}
+aside{background:var(--paper);border-left:1px solid var(--line);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 18px 28px}
+h2{font:700 21px/1.1 "Barlow Condensed",sans-serif;margin:18px 0 8px}
+p{margin:0 0 8px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+button{font:500 15px Barlow,sans-serif;min-height:44px;padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink);cursor:pointer;touch-action:manipulation}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,select:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+button[aria-pressed=true]{background:var(--yellow);border-color:var(--yellow);color:#1b1b1b}
+button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);font-weight:600;padding:8px 20px}
+:root[data-theme=dark] button.primary{background:var(--yellow);color:#1b1b1b;border-color:var(--yellow)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) button.primary{background:var(--yellow);color:#1b1b1b;border-color:var(--yellow)}}
+.tabs{display:grid;grid-template-columns:1fr 1.25fr 1fr;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.tabs button{border:0;border-radius:0;font-weight:700;font-size:15px;padding:6px 6px}
+.lead{color:var(--muted);font-size:15px}
+.ask{font:700 23px/1.15 "Barlow Condensed",sans-serif;margin:4px 0 6px}
+.prog{display:flex;justify-content:space-between;gap:8px;font-size:14px;color:var(--muted)}
+.bar{height:8px;background:var(--soft);border-radius:4px;overflow:hidden;margin:6px 0 12px}
+.bar i{display:block;height:100%;background:var(--yellow);transition:width .3s}
+.info h3{font:600 13px/1.2 Barlow,sans-serif;letter-spacing:.02em;color:var(--muted);margin:14px 0 3px}
+.info p{margin:0;font-size:16px;line-height:1.45}
+.info .how{background:var(--sel);border-left:4px solid var(--yellow);padding:8px 10px;border-radius:0 8px 8px 0}
+.timer{height:4px;background:var(--soft);border-radius:2px;overflow:hidden;margin:14px 0 2px}
+.timer i{display:block;height:100%;background:var(--muted)}
+.note{font-size:13px;color:var(--muted);margin-top:18px}
+.ctl{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.ctl button{min-height:50px;font-weight:600;line-height:1.15}
+.ctl .wide{grid-column:1 / -1}
+.ctl .yel{border-color:#e0a800}.ctl .red{border-color:#c62f2f}
+.ctl button.on{background:var(--yellow);border-color:var(--yellow);color:#1b1b1b}
+.task{background:var(--sel);border-left:4px solid var(--yellow);padding:8px 10px;border-radius:0 8px 8px 0;margin:8px 0;font-size:15px}
+.task.done{background:transparent;border-left-color:var(--ok)}
+.say{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:15px}
+.say b{display:block;font-size:12px;color:var(--muted);letter-spacing:.03em}
+.opts{display:grid;gap:8px;margin-top:8px}
+.opts button{text-align:left;display:flex;gap:10px;align-items:flex-start;min-height:48px;padding:10px 12px;line-height:1.35;font-size:15px}
+.opts button b{flex:none;width:24px;height:24px;border-radius:50%;background:var(--soft);display:grid;place-items:center;font-size:13px}
+.opts button.chosen{border-color:var(--yellow);background:var(--sel)}
+.opts button.right{border-color:var(--ok)}.opts button.wrong{border-color:var(--bad)}
+.fb{margin-top:8px;font-size:15px;padding:8px 10px;border-radius:8px}
+.fb.ok{background:rgba(31,138,76,.12)}.fb.no{background:rgba(198,47,47,.12)}
+.big{font:700 52px/1 "Barlow Condensed",sans-serif;margin:4px 0}
+.score{font-size:14px;color:var(--muted)}
+.miss{border-left:4px solid var(--bad);padding:8px 10px;margin-top:8px;background:var(--soft);border-radius:0 8px 8px 0}
+.miss b{display:block;font-size:15px}.miss p{margin:2px 0 0;font-size:14px;color:var(--muted)}
+.miss.ok{border-left-color:var(--ok)}
+.auto{background:rgba(198,47,47,.14);border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin:8px 0;font-weight:600}
+.clock{font:700 30px/1 "Barlow Condensed",sans-serif;text-align:center;margin:8px 0}
+@media(max-width:860px){
+  html,body{height:auto;min-height:100%}body{display:block}main{display:block}
+  #view{position:sticky;top:0;z-index:1;height:max(300px,44vh);min-height:300px}
+  aside{border-left:0;border-top:1px solid var(--line);overflow:visible}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <div id="view">
+    <div id="callout"><span id="calloutText"></span></div>
+    <div id="status">Loading the cab…</div>
+    <div id="hud" hidden>
+      <div id="hudP"><span>Primary</span><b id="hudPv">0</b></div>
+      <div id="hudS"><span>Secondary</span><b id="hudSv">0</b></div>
+    </div>
+  </div>
+  <aside>
+    <div class="tabs" role="tablist">
+      <button id="tabLearn" type="button" role="tab" aria-pressed="true">Learn</button>
+      <button id="tabAir" type="button" role="tab" aria-pressed="false">Air brake check</button>
+      <button id="tabTest" type="button" role="tab" aria-pressed="false">Test</button>
+    </div>
+
+    <!-- LEARN: guided in-cab walkthrough -->
+    <section id="learn">
+      <div id="lSetup">
+        <h2>In-cab inspection</h2>
+        <p class="lead">Sit in the driver's seat with the examiner. The camera goes to each in-cab item in the order you'd show it on the California vehicle inspection test, and tells you what it is, what to check, and what to say. It moves on by itself.</p>
+        <button class="primary" id="lStart" type="button">Start in-cab walkthrough</button>
+      </div>
+      <div id="lRun" hidden>
+        <div class="prog"><span id="lProg"></span><span id="lGroup"></span></div>
+        <div class="bar"><i id="lBar" style="width:0%"></i></div>
+        <p class="ask" id="lTitle"></p>
+        <div class="info" id="lInfo"></div>
+        <div class="timer"><i id="lTimer" style="width:100%"></i></div>
+        <div class="row" style="margin-top:10px">
+          <button id="lBack" type="button">Back</button>
+          <button id="lPause" type="button" aria-pressed="false">Pause</button>
+          <button id="lNext" type="button">Next</button>
+          <button id="lStop" type="button">Stop</button>
+        </div>
+      </div>
+      <div id="lDone" hidden></div>
+    </section>
+
+    <!-- AIR: hands-on air brake check -->
+    <section id="air" hidden>
+      <div id="aSetup">
+        <h2>Air brake check, hands-on</h2>
+        <p class="lead">Do the whole check yourself with the truck's real controls: start the engine, build air to governor cut-out, run the one-minute leak test, fan the brakes down to the low-air warning and the spring brakes, then the parking and service brake checks. The gauges move like the real thing. On the California test, getting the air brake check wrong is an automatic failure.</p>
+        <button class="primary" id="aStart" type="button">Start the air brake check</button>
+      </div>
+      <div id="aRun" hidden>
+        <div class="prog"><span id="aProg"></span><span id="aPart"></span></div>
+        <div class="bar"><i id="aBar" style="width:0%"></i></div>
+        <p class="ask" id="aTitle"></p>
+        <div id="aBody"></div>
+        <div id="aClock" class="clock" hidden></div>
+        <div class="ctl" id="aCtl"></div>
+        <div class="row" style="margin-top:12px">
+          <button id="aFast" type="button" aria-pressed="false">Speed up time 4×</button>
+          <button id="aNext" type="button" disabled>Next step</button>
+          <button id="aQuit" type="button">Stop</button>
+        </div>
+      </div>
+      <div id="aDone" hidden></div>
+    </section>
+
+    <!-- TEST: examiner style -->
+    <section id="test" hidden>
+      <div id="tSetup">
+        <h2>In-cab test</h2>
+        <p class="lead">Like the real test. Part 1: the examiner points at each in-cab item and you say what you check. Part 2: you perform the air brake check on your own, with no hints, and say whether this truck passes. Some trucks have a real defect. You won't see any answers until the end.</p>
+        <button class="primary" id="tStart" type="button">Start test</button>
+      </div>
+      <div id="tRun" hidden>
+        <div class="prog"><span id="tProg"></span><span id="tPart"></span></div>
+        <div class="bar"><i id="tBar" style="width:0%"></i></div>
+        <p class="ask" id="tQ"></p>
+        <div id="tBody"></div>
+        <div id="tClock" class="clock" hidden></div>
+        <div class="ctl" id="tCtl"></div>
+        <div class="opts" id="tOpts"></div>
+        <div class="row" style="margin-top:12px">
+          <button id="tFast" type="button" aria-pressed="false" hidden>Speed up time 4×</button>
+          <button id="tEnd" type="button">End test</button>
+        </div>
+      </div>
+      <div id="tDone" hidden></div>
+    </section>
+
+    <p class="note">Based on the California DMV Commercial Driver's License Handbook (Section 11M, Vehicle Inspection Test) for a Class A tractor-trailer with air brakes. Always use your own truck manufacturer's numbers when they differ.</p>
+  </aside>
+</main>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function report(msg) { const s = $("status"); s.textContent = msg; try { console.error("[InCab] " + msg); } catch (_) {} }
+  window.addEventListener("error", (e) => report("Error: " + (e.message || e)));
+  window.addEventListener("unhandledrejection", (e) => report("Error: " + ((e.reason && e.reason.message) || e.reason)));
+  const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+  // =============================================================================================
+  // Content: the California in-cab checklist (DMV handbook section 11M), paraphrased for study
+  // =============================================================================================
+  const STEPS = [
+    { id: "grab_handle", group: "Getting in", title: "Getting in: three points of contact",
+      what: "The grab handle on the driver's door pillar and the cab steps.",
+      check: "Face the truck and keep three points of contact (two hands and a foot, or two feet and a hand) as you climb in. Before you start: parking brake set and the transmission in neutral.",
+      say: "\"I'm facing the cab and using three points of contact. Parking brake is set and the transmission is in neutral.\"", ms: 9000 },
+    { id: "seat_belt", group: "Getting in", title: "Seat belt",
+      what: "The driver's seat belt: the strap, the latch plate and the buckle.",
+      check: "The belt is securely mounted, isn't cut or frayed, adjusts, and latches properly. Put it on before you move the truck.",
+      say: "\"My seat belt is securely mounted, not cut or frayed, and it latches and releases properly.\"", ms: 8000 },
+    { id: "park_brake_valve", group: "Engine start", title: "Parking brake set, transmission in neutral",
+      what: "The yellow diamond knob is the parking brake. The red octagon knob is the trailer air supply. Pulled out means applied.",
+      check: "Before starting the engine, both knobs are pulled out (brakes applied) and the gear shift is in neutral. On air brakes, chock the wheels if needed.",
+      say: "\"Parking brake is set, both valves are out, and the transmission is in neutral.\"", ms: 8500, act: "knobsOut" },
+    { id: "ignition", group: "Engine start", title: "Start the engine",
+      what: "The ignition key.",
+      check: "With the clutch pressed in, start the engine and listen for unusual noises. Watch the dash: every indicator should light for the bulb check, then the ones that don't apply go out.",
+      say: "\"Clutch in, starting the engine. No unusual noises. All the indicator lights came on and went out.\"", ms: 9000, act: "start" },
+    { id: "indicator_lights", group: "Lighting indicators", title: "Lighting indicators",
+      what: "The dash indicator lights: left and right turn signals, four-way flashers, high beam, ABS (tractor and trailer) and DEF.",
+      check: "Turn each one on and show its dash indicator works: left signal, right signal, four-ways, high beams. The ABS light should come on and then go out; on a combination, the trailer ABS light (rear, driver's side on the trailer) should do the same.",
+      say: "\"Left turn indicator works, right turn indicator works, four-way flashers work, high beam indicator works. ABS and trailer ABS lights came on and went out. DEF light is off.\"", ms: 12000, act: "indicators" },
+    { id: "oil_gauge", group: "Gauges", title: "Oil pressure gauge",
+      what: "Engine oil pressure.",
+      check: "Oil pressure should come up to normal within seconds after the engine starts, and the oil warning light goes out.",
+      say: "\"Oil pressure came up to normal within seconds of starting.\"", ms: 7500 },
+    { id: "air_primary", group: "Gauges", title: "Air pressure gauges (primary and secondary)",
+      what: "Two needles for the two air brake systems: primary (usually rear brakes) and secondary (usually front brakes).",
+      check: "Air pressure builds steadily in both systems while the engine runs. On dual air systems, pressure should build from 85 to 100 psi within about 45 seconds at fast idle.",
+      say: "\"Both air pressure gauges are building normally.\"", ms: 9000, act: "build" },
+    { id: "coolant_gauge", group: "Gauges", title: "Coolant temperature gauge",
+      what: "Engine coolant temperature.",
+      check: "Temperature should rise gradually to the normal operating range, and the temperature warning light should be off.",
+      say: "\"Coolant temperature is rising gradually toward normal.\"", ms: 7000 },
+    { id: "voltmeter", group: "Gauges", title: "Voltmeter",
+      what: "Charging system voltage.",
+      check: "Shows the alternator is charging (around 13 to 14.5 volts with the engine running), and the charging warning light is off.",
+      say: "\"Voltmeter shows the alternator is charging.\"", ms: 7000 },
+    { id: "steering_wheel", group: "Controls", title: "Steering wheel play",
+      what: "Free play in the steering wheel.",
+      check: "With the engine running, turn the wheel until the front wheels just start to move. More than about 10 degrees of free play (2 inches at the rim of a 20-inch wheel) makes the truck hard to steer.",
+      say: "\"Steering wheel play is under 10 degrees, about 2 inches at the rim.\"", ms: 8500, act: "wheelPlay" },
+    { id: "warning_triangles", group: "Emergency equipment", title: "Reflective warning triangles",
+      what: "Three red reflective warning triangles in their case (or six fuses, or three liquid-burning flares).",
+      check: "All three are there and in good shape.",
+      say: "\"I have three red reflective warning triangles.\"", ms: 7500 },
+    { id: "fire_extinguisher", group: "Emergency equipment", title: "Fire extinguisher",
+      what: "The cab fire extinguisher and its mounting bracket.",
+      check: "Properly charged (gauge needle in the green), properly rated, and securely mounted.",
+      say: "\"Fire extinguisher is properly charged, rated and secured.\"", ms: 7500 },
+    { id: "spare_fuses", group: "Emergency equipment", title: "Spare fuses or circuit breakers",
+      what: "The fuse and circuit breaker panel.",
+      check: "If the truck uses fuses, show the spare electrical fuses. If it uses circuit breakers, tell the examiner so.",
+      say: "\"This truck has spare fuses here\" or \"This truck uses circuit breakers.\"", ms: 7500 },
+    { id: "mirror_l", group: "Windshield & mirrors", title: "Windshield and mirrors",
+      what: "The windshield and the mirrors (traffic monitoring devices), checked from inside the cab.",
+      check: "Windshield is clean, with no cracks, damage or obstructions (an inspection sticker is OK). Mirrors are clean and properly adjusted from inside. Cameras or monitors, if equipped, are clean, viewable and working.",
+      say: "\"Windshield is clean, no cracks or obstructions. Mirrors are clean and adjusted properly.\"", ms: 9500 },
+    { id: "wipers", group: "Wipers & washers", title: "Wipers and washers",
+      what: "The wiper and washer switch on the stalk, and the wiper arms and blades.",
+      check: "Arms and blades are secure and not damaged. Turn the wipers on and off to show they work smoothly, and show the washers spray (washer fluid present).",
+      say: "\"Wipers work smoothly, blades and arms are secure. Washers work.\"", ms: 8500 },
+    { id: "heater_defroster", group: "Heater & defroster", title: "Heater and defroster",
+      what: "The heat, fan and defrost controls and the defroster vents at the base of the windshield.",
+      check: "Identify the heater and defroster and demonstrate that both work by operating the controls.",
+      say: "\"Heater works. Defroster works, air comes out at the windshield.\"", ms: 8000 },
+    { id: "horn", group: "Horn", title: "Horn(s)",
+      what: "The electric horn (steering wheel pad) and the air horn (pull cord).",
+      check: "Show that the air horn and/or electric horn work.",
+      say: "\"Electric horn works. Air horn works.\"", ms: 7000, act: "horn" },
+    { id: "trailer_air_supply", group: "Air brake check", title: "Air brake check (4 parts)",
+      what: "Done from the driver's seat with these two valves, the brake pedal and the air gauges.",
+      check: "1) Build air to governor cut-out, about 120 to 140 psi. 2) Engine off, release the brakes, hold the foot brake: loss no more than 4 psi in one minute on a combination (3 psi single vehicle). 3) Fan the brakes: low-air warning must come on before 55 psi. 4) Keep fanning: the valves pop out between 20 and 45 psi, red trailer valve at the same time or before the yellow. Practice it on the Air brake check tab.",
+      say: "Explain and demonstrate all four parts. Missing or getting any part wrong is an automatic failure.", ms: 14000 },
+    { id: "park_check", group: "Brake checks", title: "Parking brake check",
+      what: "Tractor parking brake (yellow) and trailer parking brake (red).",
+      check: "Tractor: yellow out, trailer brakes released, take your foot off the brake and gently pull forward in a low gear: the truck should hold. Trailer: yellow in, red out, gently pull forward: the trailer brakes should hold (this also checks the coupling).",
+      say: "\"Tractor parking brake holds. Trailer parking brake holds.\"", ms: 10000, act: "tug" },
+    { id: "brake_pedal", group: "Brake checks", title: "Service brake check",
+      what: "The service (foot) brake.",
+      check: "Pull forward at about 5 mph and apply the foot brake firmly. The truck should not pull to either side and should stop without unusual delay.",
+      say: "\"I'm pulling forward at 5 miles per hour and applying the brake. The truck stopped straight with no delay.\"", ms: 9500, act: "serviceStop" },
+  ];
+
+  // =============================================================================================
+  // Air system simulation
+  // =============================================================================================
+  const SPEC = { cutOut: 125, cutIn: 105, warn: 60, redPop: 42, yellowPop: 38, applyDrop: 5, fanDrop: 4.5, staticLeak: 0.6, appliedLeak: 2.2 };
+  const S = {
+    key: "off", engine: false, fastIdle: false, rpm: 0,
+    p: 78, s: 76, yellowOut: true, redOut: true, pedal: false, pumps: 0,
+    oil: 0, coolant: 150, volts: 12.4, fuel: 0.72, speed: 0,
+    bulbUntil: 0, governorCut: false, warnOn: false, lastPop: "",
+    left: false, right: false, hazard: false, high: false,
+    timeScale: 1, simT: 0, fault: null,
+    events: [], // {t, type, psi}
+  };
+  function resetSim(fault) {
+    Object.assign(S, { key: "off", engine: false, fastIdle: false, rpm: 0, p: 78, s: 76, yellowOut: true, redOut: true, pedal: false, pumps: 0,
+      oil: 0, coolant: 150, volts: 12.4, speed: 0, bulbUntil: 0, governorCut: false, warnOn: false, lastPop: "",
+      left: false, right: false, hazard: false, high: false, timeScale: 1, simT: 0, fault: fault || null, events: [] });
+    spec();
+  }
+  let SP = Object.assign({}, SPEC);
+  function spec() {
+    SP = Object.assign({}, SPEC);
+    if (S.fault === "leak") SP.appliedLeak = 6.5;
+    if (S.fault === "governor") SP.cutOut = 150;
+    if (S.fault === "warning") SP.warn = 50;
+    if (S.fault === "pop") { SP.redPop = 15; SP.yellowPop = 12; }
+  }
+  const minAir = () => Math.min(S.p, S.s);
+  function logEv(type) { S.events.push({ t: S.simT, type, psi: Math.round(minAir()) }); }
+
+  function setKey(k) {
+    if (k === S.key && !(k === "on" && S.engine)) return;
+    if (k === "start") {
+      if (S.engine) return;
+      S.key = "on"; S.engine = true; S.bulbUntil = S.simT + 2.5; logEv("start"); snd.crank();
+    } else if (k === "on") {
+      if (S.engine) { S.engine = false; S.fastIdle = false; logEv("engineOff"); }
+      else S.bulbUntil = S.simT + 2.0;
+      S.key = "on";
+    } else { S.key = "off"; if (S.engine) logEv("engineOff"); S.engine = false; S.fastIdle = false; }
+    S.governorCut = false;
+  }
+  function pressPedal(down) {
+    if (down === S.pedal) return;
+    S.pedal = down;
+    if (down) { S.p -= SP.applyDrop * 0.6; S.s -= SP.applyDrop * 0.6; logEv("apply"); }
+    else logEv("release");
+  }
+  function pump() {
+    if (S.pedal) pressPedal(false);
+    S.p -= SP.fanDrop; S.s -= SP.fanDrop * 0.95; S.pumps++; logEv("pump");
+    animPedal = 1;
+    checkPops();
+  }
+  function setValve(which, out) {
+    const cur = which === "yellow" ? S.yellowOut : S.redOut;
+    if (cur === out) return true;
+    if (!out && minAir() < 65) { toast("Not enough air to release the brakes yet. Build pressure above about 65 psi."); return false; }
+    if (which === "yellow") S.yellowOut = out; else S.redOut = out;
+    // pushing either valve in uses a little air
+    if (!out) { S.p -= 1.2; S.s -= 1.2; }
+    logEv(which + (out ? "Out" : "In"));
+    snd.pop(out ? 0.6 : 0.3);
+    return true;
+  }
+  function checkPops() {
+    const a = minAir();
+    if (!S.redOut && a <= SP.redPop) { S.redOut = true; logEv("redPop"); snd.pop(1); S.lastPop = "red"; }
+    if (!S.yellowOut && a <= SP.yellowPop) { S.yellowOut = true; logEv("yellowPop"); snd.pop(1); S.lastPop = "yellow"; }
+  }
+  let DEBUG_SCALE = 1;
+  function stepSim(dtReal) {
+    const dt = dtReal * S.timeScale * DEBUG_SCALE;
+    S.simT += dt;
+    // engine
+    const targetRpm = S.engine ? (S.fastIdle ? 1200 : 650) + (tugT > 0 ? 450 : 0) : 0;
+    S.rpm += (targetRpm - S.rpm) * Math.min(1, dt * 3);
+    S.oil += ((S.engine ? (S.fastIdle ? 55 : 40) : 0) - S.oil) * Math.min(1, dt * 1.5);
+    S.volts += ((S.engine ? 14.1 : (S.key === "on" ? 12.3 : 12.5)) - S.volts) * Math.min(1, dt * 1.2);
+    if (S.engine) S.coolant = Math.min(185, S.coolant + dt * 0.25);
+    // compressor and governor
+    const a = minAir();
+    if (S.engine) {
+      if (!S.governorCut && Math.max(S.p, S.s) >= SP.cutOut) { S.governorCut = true; logEv("cutOut"); snd.purge(); }
+      if (S.governorCut && a <= SP.cutIn) { S.governorCut = false; logEv("cutIn"); }
+      if (!S.governorCut) {
+        const rate = S.fastIdle ? 0.62 : 0.34; // psi per second; 85 -> 100 in ~24 s at fast idle
+        S.p = Math.min(SP.cutOut + 0.5, S.p + rate * dt);
+        S.s = Math.min(SP.cutOut + 0.5, S.s + rate * dt * 0.98);
+      }
+    }
+    // leaks
+    const leak = (S.pedal && !S.yellowOut ? SP.appliedLeak : SP.staticLeak) / 60;
+    S.p = Math.max(0, S.p - leak * dt);
+    S.s = Math.max(0, S.s - leak * dt * 0.95);
+    // warning device
+    const warnNow = S.key === "on" && minAir() < SP.warn;
+    if (warnNow && !S.warnOn) logEv("warn");
+    S.warnOn = warnNow;
+    checkPops();
+    // speed for the service brake check
+    if (serviceT > 0) {
+      serviceT -= dtReal;
+      S.speed = serviceT > 2.2 ? Math.min(5, S.speed + dtReal * 2.2) : Math.max(0, S.speed - dtReal * 4);
+      if (serviceT <= 2.2 && !S.pedal && serviceT > 0.3) { S.pedal = true; animPedal = 1; }
+      if (serviceT <= 0) { S.speed = 0; S.pedal = false; }
+    }
+  }
+
+  // =============================================================================================
+  // Sound (Web Audio; created on the first tap)
+  // =============================================================================================
+  const snd = (function () {
+    let ctx = null, buzz = null;
+    function ac() { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) {} } if (ctx && ctx.state === "suspended") ctx.resume(); return ctx; }
+    function noise(dur, vol, freq) {
+      const c = ac(); if (!c) return;
+      const n = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate), d = n.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 1.5);
+      const src = c.createBufferSource(); src.buffer = n;
+      const f = c.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = 0.7;
+      const g = c.createGain(); g.gain.value = vol;
+      src.connect(f); f.connect(g); g.connect(c.destination); src.start();
+    }
+    function tone(fr, dur, vol, type) {
+      const c = ac(); if (!c) return;
+      const o = c.createOscillator(), g = c.createGain(); o.type = type || "sawtooth"; o.frequency.value = fr;
+      g.gain.setValueAtTime(vol, c.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
+      o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime + dur);
+    }
+    return {
+      unlock: ac,
+      pop: (k) => noise(0.35 * k + 0.1, 0.5 * k + 0.1, 2400),
+      purge: () => noise(1.4, 0.7, 1800),
+      crank: () => { for (let i = 0; i < 6; i++) setTimeout(() => noise(0.12, 0.25, 220), i * 140); },
+      horn: () => { tone(311, 0.9, 0.18); tone(370, 0.9, 0.14); },
+      airHorn: () => { tone(185, 1.1, 0.2); tone(233, 1.1, 0.15, "square"); },
+      setBuzzer: (on) => {
+        const c = ctx; if (!c) return;
+        if (on && !buzz) { const o = c.createOscillator(), g = c.createGain(); o.type = "square"; o.frequency.value = 420; g.gain.value = 0.06; o.connect(g); g.connect(c.destination); o.start(); buzz = { o, g }; }
+        if (!on && buzz) { try { buzz.o.stop(); } catch (_) {} buzz = null; }
+      },
+    };
+  })();
+  document.addEventListener("pointerdown", () => snd.unlock(), { passive: true });
+
+  // =============================================================================================
+  // 3D
+  // =============================================================================================
+  let THREE = null, renderer, scene, camera, camTarget;
+  const N = {};               // incab id -> [Object3D]
+  const needles = {};         // gauge key -> {o, base, axis, vmin, vmax, sweep}
+  const warns = {};           // warn key -> [mesh]
+  const knobs = {};           // 'yellow' | 'red' -> {o, base, amt}
+  const pedals = {};          // brake_pedal / clutch -> {o, base, axis, deg}
+  let wheel = null, gaugeFaces = [], hiMeshes = [], fly = null, ready = false;
+  let animPedal = 0, tugT = 0, serviceT = 0, wheelPlayT = 0, indicatorDemoT = 0, blink = 0;
+  const B = (x, y, z) => new (THREE.Vector3)(x, z, -y);        // Blender (X fwd, Y left, Z up) -> three
+  const HEAD = [-2.12, 0.62, 2.34];
+
+  function nodeCenter(list) {
+    const box = new THREE.Box3();
+    for (const o of list) box.expandByObject(o);
+    return box.isEmpty() ? null : box.getCenter(new THREE.Vector3());
+  }
+  function meshesOf(id) {
+    const out = [];
+    for (const o of N[id] || []) o.traverse((m) => { if (m.isMesh) out.push(m); });
+    return out;
+  }
+  // camera: from the driver's head toward the item, stopping at a set distance
+  const VIEW = {
+    grab_handle: { from: [-1.85, 0.20, 2.20], dist: 0, lookAt: [-1.16, 1.14, 2.05] }, seat_belt: { from: [-1.80, 0.25, 2.25], dist: 0 },
+    park_brake_valve: { dist: 0.42 }, trailer_air_supply: { dist: 0.42 }, ignition: { from: [-1.74, 0.20, 1.84], dist: 0 },
+    indicator_lights: { dist: 0.46 }, oil_gauge: { dist: 0.30 }, air_primary: { dist: 0.36, look: "air_both" }, coolant_gauge: { dist: 0.30 },
+    voltmeter: { dist: 0.32 }, steering_wheel: { from: HEAD, dist: 0 }, warning_triangles: { from: [-1.65, 0.0, 2.15], dist: 0 },
+    fire_extinguisher: { from: [-1.75, 0.35, 2.10], dist: 0 }, spare_fuses: { from: [-1.70, 0.80, 1.80], dist: 0 }, mirror_l: { from: [-2.05, 0.55, 2.36], dist: 0 },
+    wipers: { from: [-2.05, 0.45, 2.20], dist: 0, look: "wiper_both" }, heater_defroster: { dist: 0.50 }, horn: { from: [-2.40, 0.25, 2.30], dist: 0, lookAt: [-1.88, 0.85, 2.18] },
+    park_check: { from: [-1.90, 0.40, 2.00], dist: 0, look: "valves" }, brake_pedal: { from: [-1.92, 0.22, 1.72], dist: 0, lookAt: [-1.44, 0.66, 1.27] },
+    speedo: { from: [-1.80, 0.74, 2.02], dist: 0, lookAt: [-1.40, 0.70, 1.83] },
+    cluster: { from: [-1.80, 0.62, 2.07], dist: 0, lookAt: [-1.40, 0.62, 1.82] },
+    driver: { from: HEAD, dist: 0, lookAt: [-1.30, 0.40, 1.85] },
+    valves: { from: [-1.86, 0.36, 1.93], dist: 0, lookAt: [-1.50, 0.10, 1.58] },
+  };
+  function targetOf(id) {
+    const v = VIEW[id] || {};
+    if (v.lookAt) return B(...v.lookAt);
+    if (v.look === "air_both") return nodeCenter([...(N.air_primary || []), ...(N.air_secondary || [])]);
+    if (v.look === "wiper_both") return nodeCenter([...(N.wipers || [])]) || B(-1.6, 0.85, 1.9);
+    if (v.look === "valves") return nodeCenter([...(N.park_brake_valve || []), ...(N.trailer_air_supply || [])]);
+    return nodeCenter(N[id] || []);
+  }
+  function viewFor(id) {
+    const v = VIEW[id] || { dist: 0.45 };
+    const tgt = targetOf(id); if (!tgt) return null;
+    let eye;
+    if (v.from) eye = B(...v.from);
+    else { const head = B(...HEAD); const d = head.clone().sub(tgt); const L = d.length(); eye = tgt.clone().add(d.multiplyScalar(Math.min(1, (v.dist || 0.45) / L))); }
+    return { eye, tgt };
+  }
+  function flyTo(id, dur) {
+    const v = viewFor(id); if (!v || !camera) return;
+    fly = { t: 0, dur: dur || 1.4, e0: camera.position.clone(), t0: camTarget.clone(), e1: v.eye, t1: v.tgt };
+  }
+  function stepFly(dt) {
+    if (!fly) return;
+    fly.t += dt; const k = Math.min(1, fly.t / fly.dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    camera.position.lerpVectors(fly.e0, fly.e1, e); camTarget.lerpVectors(fly.t0, fly.t1, e);
+    if (k >= 1) fly = null;
+  }
+  function highlight(id) {
+    for (const m of hiMeshes) { const o = m.userData.__em; if (o) { m.material.emissive.copy(o.c); m.material.emissiveIntensity = o.i; } }
+    hiMeshes = [];
+    const ids = id === "park_check" ? ["park_brake_valve", "trailer_air_supply"] : id === "air_primary" ? ["air_primary", "air_secondary"] : id === "horn" ? ["horn"] : id === "mirror_l" ? ["mirror_l", "mirror_r", "windshield"] : [id];
+    for (const i of ids) for (const m of meshesOf(i)) if (m.material && m.material.emissive && !m.userData.isGaugeFace && !m.userData.warnKey) hiMeshes.push(m);
+  }
+  function paintHighlight(t) {
+    const k = 0.35 + 0.3 * Math.sin(t * 5);
+    for (const m of hiMeshes) { m.material.emissive.setRGB(0.95, 0.72, 0.02); m.material.emissiveIntensity = k; }
+  }
+
+  function setNeedle(key, v) {
+    const n = needles[key]; if (!n) return;
+    const c = Math.max(n.vmin, Math.min(n.vmax, v));
+    const ang = -THREE.MathUtils.degToRad(n.sweep * (c - n.vmin) / (n.vmax - n.vmin));
+    n.o.quaternion.copy(n.base).multiply(new THREE.Quaternion().setFromAxisAngle(n.axis, ang));
+  }
+  function setWarn(key, on) {
+    for (const m of warns[key] || []) {
+      m.material.emissiveIntensity = on ? 2.2 : 0.0;
+      m.material.color.setScalar(on ? 1.0 : 0.22);
+    }
+  }
+  function syncTruck(dt, t) {
+    // gauges
+    setNeedle("air_primary", S.p); setNeedle("air_secondary", S.s);
+    setNeedle("oil", S.oil); setNeedle("coolant", S.coolant); setNeedle("volts", S.key === "off" ? 8 : S.volts);
+    setNeedle("fuel", S.key === "off" ? 0 : S.fuel); setNeedle("tach", S.rpm / 100); setNeedle("speed", S.speed);
+    for (const m of gaugeFaces) m.material.emissiveIntensity = S.key === "off" ? 0.08 : 0.7;
+    // indicator lights
+    blink += dt; const blinkOn = (blink % 1.0) < 0.5;
+    const bulb = S.key === "on" && S.simT < S.bulbUntil;
+    const on = S.key === "on";
+    const lowAir = on && (bulb || S.warnOn);
+    setWarn("low_air", lowAir);
+    setWarn("park_brake", on && (bulb || S.yellowOut));
+    setWarn("abs", on && bulb);
+    setWarn("trailer_abs", on && bulb);
+    setWarn("oil", on && (bulb || S.oil < 8));
+    setWarn("temp", on && bulb);
+    setWarn("charge", on && (bulb || !S.engine));
+    setWarn("seat_belt", on && bulb);
+    setWarn("def", on && bulb);
+    setWarn("check_engine", on && bulb);
+    const demo = indicatorDemoT > 0 ? indicatorDemoT : 0;
+    let L = S.left || S.hazard, R = S.right || S.hazard, H = S.high;
+    if (demo > 0) { const ph = 12 - demo; L = ph < 3 || (ph >= 6 && ph < 9); R = (ph >= 3 && ph < 6) || (ph >= 6 && ph < 9); H = ph >= 9; }
+    setWarn("left", on && (bulb || (L && blinkOn)));
+    setWarn("right", on && (bulb || (R && blinkOn)));
+    setWarn("high", on && (bulb || H));
+    snd.setBuzzer(lowAir && !bulb);
+    // knobs
+    for (const [k, v] of Object.entries(knobs)) {
+      const want = k === "yellow" ? (S.yellowOut ? 1 : 0) : (S.redOut ? 1 : 0);
+      v.amt += (want - v.amt) * Math.min(1, dt * 14);
+      v.o.position.copy(v.base).addScaledVector(v.axis, v.pull * v.amt);
+    }
+    // pedals
+    animPedal = Math.max(0, animPedal - dt * 2.6);
+    const bp = pedals.brake_pedal;
+    if (bp) { const amt = S.pedal ? 1 : Math.sin(Math.min(1, animPedal) * Math.PI); bp.o.quaternion.copy(bp.base).multiply(new THREE.Quaternion().setFromAxisAngle(bp.axis, THREE.MathUtils.degToRad(bp.deg * amt))); }
+    // steering wheel play demo
+    if (wheel) {
+      let a = 0;
+      if (wheelPlayT > 0) { wheelPlayT -= dt; a = Math.sin((6 - wheelPlayT) * 2.2) * THREE.MathUtils.degToRad(10); }
+      wheel.o.quaternion.copy(wheel.base).multiply(new THREE.Quaternion().setFromAxisAngle(wheel.axis, a));
+    }
+    if (indicatorDemoT > 0) indicatorDemoT -= dt;
+    // tug test shake
+    if (tugT > 0) { tugT -= dt; camera.position.y += Math.sin(t * 60) * 0.0015; }
+    // HUD
+    const hud = $("hud");
+    hud.hidden = !hudShown;
+    if (hudShown) {
+      $("hudPv").textContent = Math.round(S.p); $("hudSv").textContent = Math.round(S.s);
+      $("hudP").className = S.warnOn ? "warn" : ""; $("hudS").className = S.warnOn ? "warn" : "";
+    }
+  }
+  let hudShown = false;
+
+  async function importThree() {
+    const cdn = "https://cdn.jsdelivr.net/npm/three@0.170.0";
+    const sources = [
+      { three: "./three/build/three.module.min.js", gltf: "./three/examples/jsm/loaders/GLTFLoader.js", env: "./three/examples/jsm/environments/RoomEnvironment.js" },
+      { three: cdn + "/+esm", gltf: cdn + "/examples/jsm/loaders/GLTFLoader.js/+esm", env: cdn + "/examples/jsm/environments/RoomEnvironment.js/+esm" },
+    ];
+    let err = null;
+    for (const s of sources) {
+      try { const [a, b, c] = await Promise.all([import(s.three), import(s.gltf), import(s.env)]); return { THREE: a, GLTFLoader: b.GLTFLoader, RoomEnvironment: c.RoomEnvironment }; }
+      catch (e) { err = e; }
+    }
+    throw err || new Error("3D library failed to load");
+  }
+  const fetchBuf = (f) => fetch(f).then((r) => { if (!r.ok) throw new Error(f + " missing (" + r.status + ")"); return r.arrayBuffer(); });
+
+  async function init3D() {
+    try {
+      const mods = await importThree();
+      THREE = mods.THREE;
+      const host = $("view");
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      host.prepend(renderer.domElement);
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color("#a9c3d6");
+      try { scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new mods.RoomEnvironment(), 0.04).texture; } catch (_) {}
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.9));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.3); sun.position.set(8, 14, 10); scene.add(sun);
+      const cabLight = new THREE.PointLight(0xfff4e0, 2.2, 4.5, 1.6); cabLight.position.copy(B(-1.95, 0.0, 2.75)); scene.add(cabLight);
+      const dashLight = new THREE.PointLight(0xffffff, 1.2, 2.2, 1.8); dashLight.position.copy(B(-2.0, 0.5, 2.1)); scene.add(dashLight);
+      const ground = new THREE.Mesh(new THREE.CircleGeometry(60, 64), new THREE.MeshStandardMaterial({ color: "#8f969c", roughness: 0.95 }));
+      ground.rotation.x = -Math.PI / 2; ground.position.set(-9, -0.001, 0); scene.add(ground);
+      camera = new THREE.PerspectiveCamera(62, 1, 0.02, 300);
+      camera.position.copy(B(...HEAD)); camTarget = B(-1.30, 0.40, 1.85);
+      renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+      const resize = () => { const w = host.clientWidth || 1, h = host.clientHeight || 1; renderer.setSize(w, h, false); camera.aspect = w / h; camera.fov = w / h < 1 ? 70 : 58; camera.updateProjectionMatrix(); };
+      if (window.ResizeObserver) new ResizeObserver(resize).observe(host); else window.addEventListener("resize", resize);
+      resize();
+      const clock = new THREE.Clock();
+      renderer.setAnimationLoop(() => {
+        const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
+        stepSim(dt);
+        stepFly(dt);
+        if (ready) { syncTruck(dt, t); paintHighlight(t); }
+        tickUi(dt);
+        camera.lookAt(camTarget);
+        renderer.render(scene, camera);
+      });
+
+      const [truckBuf, cabBuf] = await Promise.all([fetchBuf("cdl_semi.glb"), fetchBuf("cab_interior.glb")]);
+      const loader = new mods.GLTFLoader();
+      const parse = (buf) => new Promise((res, rej) => loader.parse(buf, "", res, rej));
+      const truck = await parse(truckBuf), cab = await parse(cabBuf);
+      scene.add(truck.scene); scene.add(cab.scene);
+      truck.scene.updateMatrixWorld(true); cab.scene.updateMatrixWorld(true);
+      truck.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        o.material = o.material.clone();
+        // seen from inside, the outer shell's back faces would hide the windows: draw front faces only
+        const glass = /glass/i.test(o.material.name || "");
+        o.material.side = glass ? THREE.DoubleSide : THREE.FrontSide;
+        if (glass) { o.material.transparent = true; o.material.opacity = Math.min(o.material.opacity, 0.18); o.material.depthWrite = false; }
+        o.userData.__em = { c: o.material.emissive ? o.material.emissive.clone() : new THREE.Color(0), i: o.material.emissiveIntensity || 0 };
+        let nm = o.name || "";
+        for (let k = o; k; k = k.parent) if (/^(Cab_Door_[LR]|Mirror_[LR]|Windshield)/.test(k.name || "")) { nm = k.name; break; }
+        const add = (id) => (N[id] = N[id] || []).push(o);
+        // this page never leaves the cab: the doors' painted shells would block the side windows and mirrors
+        if (/^Cab_Door_[LR]/.test(nm) && !glass) o.visible = false;
+        if (/^Mirror_L/.test(nm)) add("mirror_l");
+        if (/^Mirror_R/.test(nm)) add("mirror_r");
+        if (/^Windshield$/.test(nm)) add("windshield");
+        if (/^Windshield_Wipers/.test(nm)) add("wipers");
+      });
+      cab.scene.traverse((o) => {
+        const u = o.userData || {};
+        if (u.incab) (N[u.incab] = N[u.incab] || []).push(o);
+        if (u.gauge) needles[u.gauge] = { o, base: o.quaternion.clone(), axis: new THREE.Vector3(...String(u.axis_gltf).split(",").map(Number)).normalize(), vmin: +u.vmin, vmax: +u.vmax, sweep: +u.sweep_deg };
+        if (u.pull_m) knobs[u.incab === "park_brake_valve" ? "yellow" : "red"] = { o, base: o.position.clone(), axis: new THREE.Vector3(...String(u.pull_axis_gltf).split(",").map(Number)).normalize(), pull: +u.pull_m, amt: 1 };
+        if (u.press_deg) pedals[u.incab] = { o, base: o.quaternion.clone(), axis: new THREE.Vector3(...String(u.press_axis_gltf).split(",").map(Number)).normalize(), deg: +u.press_deg };
+        if (o.name === "Steering_Wheel") wheel = { o, base: o.quaternion.clone(), axis: new THREE.Vector3(0, 1, 0) };
+        if (o.isMesh) {
+          o.material = o.material.clone();
+          o.userData.__em = { c: o.material.emissive ? o.material.emissive.clone() : new THREE.Color(0), i: o.material.emissiveIntensity || 0 };
+          let k = o; while (k && !(k.userData && k.userData.warn)) k = k.parent;
+          if (k && k.userData.warn) { o.userData.warnKey = k.userData.warn; (warns[k.userData.warn] = warns[k.userData.warn] || []).push(o); }
+          if (/^Gauge_[a-z_]+$/.test(o.name) && o.material.emissiveMap) { o.userData.isGaugeFace = true; gaugeFaces.push(o); }
+        }
+      });
+      ready = true;
+      $("status").textContent = "";
+      flyTo(cur.view || "driver", 1.0);
+    } catch (e) {
+      report("3D view unavailable: " + (e && e.message ? e.message : "WebGL or 3D library missing"));
+    }
+  }
+
+  // =============================================================================================
+  // UI helpers
+  // =============================================================================================
+  const cur = { view: "driver" };
+  function look(id) { cur.view = id; if (ready) flyTo(id); highlightLater(id); }
+  function highlightLater(id) { if (ready) highlight(id); else setTimeout(() => highlightLater(id), 300); }
+  function callout(text) { $("calloutText").textContent = text; $("callout").style.display = text ? "block" : "none"; }
+  let toastT = null;
+  function toast(text) { callout(text); clearTimeout(toastT); toastT = setTimeout(() => callout(""), 2600); }
+  const uiTickers = [];
+  function tickUi(dt) { for (const f of uiTickers) f(dt); }
+
+  function runAct(act) {
+    if (act === "knobsOut") { S.yellowOut = true; S.redOut = true; }
+    if (act === "start") { if (!S.engine) setKey("start"); }
+    if (act === "indicators") { if (!S.engine) setKey("start"); indicatorDemoT = 12; }
+    if (act === "build") { if (!S.engine) setKey("start"); S.fastIdle = true; if (minAir() > 95) { S.p = 86; S.s = 85; } }
+    if (act === "wheelPlay") wheelPlayT = 6;
+    if (act === "horn") { snd.horn(); setTimeout(() => snd.airHorn(), 1300); }
+    if (act === "tug") { tugT = 1.6; }
+    if (act === "serviceStop") { if (!S.engine) setKey("start"); S.yellowOut = false; S.redOut = false; serviceT = 6; }
+  }
+
+  // =============================================================================================
+  // LEARN tab
+  // =============================================================================================
+  const L = { on: false, i: 0, left: 0, paused: false };
+  function startLearn() {
+    resetSim(); L.on = true; L.i = 0; hudShown = false;
+    $("lSetup").hidden = true; $("lDone").hidden = true; $("lRun").hidden = false; showLearn();
+  }
+  function showLearn() {
+    const s = STEPS[L.i];
+    $("lProg").textContent = `Item ${L.i + 1} of ${STEPS.length}`; $("lGroup").textContent = s.group;
+    $("lBar").style.width = `${(100 * (L.i + 1)) / STEPS.length}%`;
+    $("lTitle").textContent = s.title;
+    $("lInfo").innerHTML = `<h3>WHAT IT IS</h3><p>${esc(s.what)}</p><h3>WHAT TO CHECK</h3><p>${esc(s.check)}</p><h3>ON THE TEST, SAY</h3><p class="how">${esc(s.say)}</p>`;
+    callout(s.title);
+    look(s.id);
+    if (s.act) runAct(s.act);
+    L.left = s.ms; L.total = s.ms;
+  }
+  uiTickers.push((dt) => {
+    if (!L.on || L.paused) return;
+    L.left -= dt * 1000; $("lTimer").style.width = `${Math.max(0, (100 * L.left) / L.total)}%`;
+    if (L.left <= 0) { if (L.i < STEPS.length - 1) { L.i++; showLearn(); } else finishLearn(); }
+  });
+  function finishLearn() {
+    L.on = false; callout(""); highlight("none");
+    $("lRun").hidden = true; $("lDone").hidden = false;
+    $("lDone").innerHTML = `<h2>In-cab walkthrough done</h2><p class="lead">That's every in-cab item on the California checklist. Next, practice the air brake check hands-on, then take the test.</p>
+      <div class="row"><button class="primary" type="button" id="lGoAir">Practice the air brake check</button><button type="button" id="lAgain">Go through it again</button></div>`;
+  }
+  $("lStart").addEventListener("click", startLearn);
+  $("lNext").addEventListener("click", () => { if (L.i < STEPS.length - 1) { L.i++; showLearn(); } else finishLearn(); });
+  $("lBack").addEventListener("click", () => { if (L.i > 0) { L.i--; showLearn(); } });
+  $("lPause").addEventListener("click", () => { L.paused = !L.paused; $("lPause").setAttribute("aria-pressed", String(L.paused)); $("lPause").textContent = L.paused ? "Resume" : "Pause"; });
+  $("lStop").addEventListener("click", () => { L.on = false; callout(""); highlight("none"); $("lRun").hidden = true; $("lSetup").hidden = false; look("driver"); });
+  $("lDone").addEventListener("click", (e) => { if (e.target.id === "lGoAir") setMode("air"); if (e.target.id === "lAgain") startLearn(); });
+
+  // =============================================================================================
+  // Controls panel shared by the hands-on check and the test
+  // =============================================================================================
+  function controls(host, opts) {
+    const b = (id, label, cls) => `<button type="button" data-c="${id}" class="${cls || ""}">${label}</button>`;
+    host.innerHTML =
+      b("key", "") + b("idle", "Fast idle") +
+      b("yellow", "", "yel") + b("red", "", "red") +
+      b("pedal", "Press &amp; hold brake") + b("pump", "Pump brake (fan)") +
+      (opts && opts.extra ? opts.extra : "");
+    const upd = () => {
+      const k = host.querySelector('[data-c="key"]');
+      k.textContent = S.engine ? "Engine off (key on)" : S.key === "on" ? "Start engine" : "Key on / start";
+      const idle = host.querySelector('[data-c="idle"]'); idle.classList.toggle("on", S.fastIdle); idle.disabled = !S.engine;
+      host.querySelector('[data-c="yellow"]').innerHTML = S.yellowOut ? "Yellow: OUT<br><small>push in to release</small>" : "Yellow: IN<br><small>pull to set parking</small>";
+      host.querySelector('[data-c="red"]').innerHTML = S.redOut ? "Red: OUT<br><small>push in to supply trailer</small>" : "Red: IN<br><small>pull to set trailer brakes</small>";
+      const pd = host.querySelector('[data-c="pedal"]'); pd.classList.toggle("on", S.pedal); pd.textContent = S.pedal ? "Release brake" : "Press & hold brake";
+    };
+    host.onclick = (e) => {
+      const c = e.target.closest("button"); if (!c) return;
+      const id = c.dataset.c;
+      if (id === "key") { if (S.engine) setKey("on"); else if (S.key === "on") setKey("start"); else { setKey("on"); setTimeout(() => setKey("start"), 1200); } }
+      if (id === "idle") S.fastIdle = !S.fastIdle;
+      if (id === "yellow") setValve("yellow", !S.yellowOut);
+      if (id === "red") setValve("red", !S.redOut);
+      if (id === "pedal") pressPedal(!S.pedal);
+      if (id === "pump") pump();
+      if (opts && opts.onExtra) opts.onExtra(id);
+      upd();
+      if (opts && opts.after) opts.after(id);
+    };
+    upd();
+    return upd;
+  }
+
+  // =============================================================================================
+  // AIR tab: guided hands-on air brake check
+  // =============================================================================================
+  const A = { on: false, i: 0, upd: null, ans: {}, leakStart: null, leakT: 0, settle: 0 };
+  const AIR_STEPS = [
+    { part: "Setup", title: "Get set up", view: "valves",
+      task: () => "Parking brake set (yellow out), trailer air supply out, transmission in neutral, wheels chocked. Turn the key on and start the engine.",
+      done: () => S.engine,
+      say: "\"Parking brake is set, transmission in neutral, wheels chocked. Starting the engine.\"" },
+    { part: "Part 1 of 4", title: "Air gauge and governor cut-out", view: "air_primary",
+      task: () => "Set a fast idle and watch both air gauges build. When the governor cuts out you'll hear the air dryer purge and the needles stop climbing.",
+      done: () => S.events.some((e) => e.type === "cutOut"),
+      q: { text: "At what pressure did the governor cut out?", opts: () => [`About ${SP.cutOut} psi, within 120 to 140 psi`, "About 100 psi", "About 60 psi", "About 160 psi"], right: 0,
+        why: "California: the air should build to governor cut-out at approximately 120 to 140 psi. Know your truck's cut-out pressure." },
+      say: "\"Air pressure built to governor cut-out at about 125 psi.\"" },
+    { part: "Part 2 of 4", title: "Air leakage rate (applied)", view: "air_primary",
+      task: () => "Shut the engine off but leave the key on. Push in the yellow and red knobs to release the brakes. Fully press and hold the brake pedal. Once the needle settles, hold it for one full minute.",
+      done: () => A.leakResult != null,
+      q: { text: () => `The gauge dropped ${A.leakResult} psi in one minute. Is that OK for a combination vehicle?`, opts: () => ["Yes, it's 4 psi or less", "No, it must be 0 psi", "No, the limit is 2 psi", "Yes, anything under 10 psi is OK"], right: 0,
+        why: "California: with the foot brake fully applied, a combination vehicle may lose no more than 4 psi in one minute (3 psi for a single vehicle)." },
+      say: "\"Engine off, key on, brakes released, foot brake applied. I lost 2 psi in one minute; the limit is 4 for a combination.\"" },
+    { part: "Part 3 of 4", title: "Low air warning", view: "cluster",
+      task: () => "Release the pedal. Fan the brakes (pump the pedal) to bring the pressure down. Watch for the LOW AIR light and listen for the buzzer.",
+      done: () => S.events.some((e) => e.type === "warn"),
+      q: { text: () => `The low-air warning came on at about ${(S.events.find((e) => e.type === "warn") || { psi: 60 }).psi} psi. What's the rule?`, opts: () => ["It must come on before the pressure drops below 55 psi", "It must come on below 20 psi", "It must come on at exactly 100 psi", "It only needs a light, no buzzer"], right: 0,
+        why: "California: the low-air warning (buzzer, light or flag) must activate before the pressure falls below 55 psi, or the level your manufacturer specifies." },
+      say: "\"Fanning off the air. The low-air light and buzzer came on at 60 psi, before 55.\"" },
+    { part: "Part 4 of 4", title: "Emergency (spring) brakes", view: "valves",
+      task: () => "Keep fanning the brakes. The red trailer air supply knob and the yellow parking brake knob should pop out.",
+      done: () => S.events.some((e) => e.type === "yellowPop") && S.events.some((e) => e.type === "redPop"),
+      q: { text: () => { const r = S.events.find((e) => e.type === "redPop"), y = S.events.find((e) => e.type === "yellowPop"); return `Red popped at about ${r ? r.psi : "?"} psi and yellow at about ${y ? y.psi : "?"} psi. Is that right?`; },
+        opts: () => ["Yes: between 20 and 45 psi, red at the same time or before yellow", "No: they should pop above 60 psi", "No: yellow must pop before red", "No: they should never pop out"], right: 0,
+        why: "California: the parking brake valve should pop out between 20 and 45 psi, and on a combination the trailer valve pops out at the same time or before the tractor's." },
+      say: "\"Continuing to fan. The trailer valve popped at about 42 psi and the parking brake valve at about 38, between 20 and 45.\"" },
+    { part: "Brake checks", title: "Rebuild the air", view: "air_primary",
+      task: () => "Start the engine and build the air back up to at least 100 psi (fast idle helps).",
+      done: () => S.engine && minAir() >= 100,
+      say: "\"Rebuilding air pressure.\"" },
+    { part: "Brake checks", title: "Tractor parking brake check", view: "valves",
+      task: () => "Set the tractor parking brake (yellow OUT) and release the trailer brakes (red IN). Then tap \"Gently pull forward\".",
+      extra: `<button type="button" class="wide" data-c="tug">Gently pull forward in low gear</button>`,
+      done: () => A.tug === "tractor",
+      say: "\"Tractor parking brake set, trailer brakes released. Gently pulling forward: the tractor parking brake holds.\"" },
+    { part: "Brake checks", title: "Trailer parking brake check", view: "valves",
+      task: () => "Now release the tractor parking brake (yellow IN) and set the trailer brakes (red OUT). Tap \"Gently pull forward\".",
+      extra: `<button type="button" class="wide" data-c="tug">Gently pull forward in low gear</button>`,
+      done: () => A.tug === "trailer",
+      say: "\"Trailer parking brake set. Gently pulling forward: the trailer holds, so the brakes and the coupling are good.\"" },
+    { part: "Brake checks", title: "Service brake check", view: "speedo",
+      task: () => "Release all the brakes (yellow IN, red IN), then tap \"Pull forward at 5 mph and brake\".",
+      extra: `<button type="button" class="wide" data-c="svc">Pull forward at 5 mph and brake</button>`,
+      done: () => A.svc === true,
+      say: "\"Pulling forward at 5 miles per hour and applying the service brake firmly. No pulling to either side, no delay.\"" },
+  ];
+  function startAir() {
+    resetSim(); A.on = true; A.i = 0; A.leakResult = null; A.leakStart = null; A.tug = null; A.svc = false; A.answered = false;
+    hudShown = true; S.p = 72; S.s = 70;
+    $("aSetup").hidden = true; $("aDone").hidden = true; $("aRun").hidden = false; showAir();
+  }
+  function showAir() {
+    const st = AIR_STEPS[A.i];
+    A.answered = false; A.order = null;
+    $("aProg").textContent = `Step ${A.i + 1} of ${AIR_STEPS.length}`; $("aPart").textContent = st.part;
+    $("aBar").style.width = `${(100 * (A.i + 1)) / AIR_STEPS.length}%`;
+    $("aTitle").textContent = st.title;
+    callout(st.title); look(st.view);
+    A.upd = controls($("aCtl"), { extra: st.extra || "", onExtra: airExtra });
+    renderAirBody();
+  }
+  function renderAirBody() {
+    const st = AIR_STEPS[A.i], done = st.done();
+    let h = `<div class="task ${done ? "done" : ""}">${done ? "✓ " : ""}${esc(st.task())}</div>`;
+    if (done && st.q && !A.answered) {
+      const qt = typeof st.q.text === "function" ? st.q.text() : st.q.text;
+      if (!A.order) { const raw = st.q.opts(); A.order = shuffle(raw.map((o, i) => ({ o, ok: i === st.q.right }))); }
+      h += `<p style="margin-top:10px;font-weight:600">${esc(qt)}</p><div class="opts">${A.order.map((x, i) => `<button type="button" data-a="${i}"><b>${"ABCD"[i]}</b><span>${esc(x.o)}</span></button>`).join("")}</div>`;
+    }
+    if (A.answered) h += `<div class="fb ${A.lastOk ? "ok" : "no"}">${A.lastOk ? "Correct. " : "Not quite. "}${esc(st.q.why)}</div>`;
+    if (done && (!st.q || A.answered)) h += `<div class="say"><b>WHAT TO SAY</b>${esc(st.say)}</div>`;
+    $("aBody").innerHTML = h;
+    $("aNext").disabled = !(done && (!st.q || A.answered));
+    $("aNext").textContent = A.i === AIR_STEPS.length - 1 ? "Finish" : "Next step";
+  }
+  $("aBody").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-a]"); if (!b) return;
+    A.answered = true; A.lastOk = !!(A.order && A.order[+b.dataset.a] && A.order[+b.dataset.a].ok); renderAirBody();
+  });
+  function airExtra(id) {
+    if (id === "tug") {
+      tugT = 1.6;
+      if (!S.engine) { toast("Start the engine first."); return; }
+      const st = AIR_STEPS[A.i];
+      if (st.title.startsWith("Tractor")) { if (S.yellowOut && !S.redOut) { A.tug = "tractor"; toast("The tractor held. Parking brake is good."); } else toast("Set it up first: yellow OUT, red IN."); }
+      else { if (!S.yellowOut && S.redOut) { A.tug = "trailer"; toast("The trailer held. Trailer brakes and coupling are good."); } else toast("Set it up first: yellow IN, red OUT."); }
+    }
+    if (id === "svc") {
+      if (!S.engine) { toast("Start the engine first."); return; }
+      if (S.yellowOut || S.redOut) { toast("Release all the brakes first: yellow IN and red IN."); return; }
+      serviceT = 6; setTimeout(() => { A.svc = true; toast("Stopped straight, no pulling and no delay."); }, 5200);
+    }
+  }
+  // leak test timing: starts once the engine is off, brakes released and the pedal held
+  function leakTick(dt, owner) {
+    const ready = !S.engine && S.key === "on" && !S.yellowOut && !S.redOut && S.pedal;
+    if (!ready) { if (owner.leakStart != null) { owner.leakStart = null; } owner.settle = 0; return null; }
+    owner.settle += dt * S.timeScale;
+    if (owner.settle < 3) return { phase: "settle" };
+    if (owner.leakStart == null) { owner.leakStart = { t: S.simT, psi: minAir() }; }
+    const el = S.simT - owner.leakStart.t;
+    return { phase: "timing", el, lost: owner.leakStart.psi - minAir() };
+  }
+  uiTickers.push((dt) => {
+    if (!A.on) return;
+    const st = AIR_STEPS[A.i];
+    if (A.upd) A.upd();
+    if (st.title.startsWith("Air leakage") && A.leakResult == null) {
+      const r = leakTick(dt, A), c = $("aClock");
+      c.hidden = !r;
+      if (r && r.phase === "settle") c.textContent = "Let the needle settle…";
+      if (r && r.phase === "timing") {
+        c.textContent = `0:${String(Math.min(60, Math.floor(r.el))).padStart(2, "0")} · lost ${r.lost.toFixed(1)} psi`;
+        if (r.el >= 60) { A.leakResult = Math.max(0, Math.round(r.lost)); c.textContent = `1:00 · lost ${A.leakResult} psi`; renderAirBody(); }
+      }
+    } else if (!st.title.startsWith("Air leakage")) $("aClock").hidden = true;
+    const wasDone = A._done; A._done = st.done();
+    if (A._done !== wasDone) renderAirBody();
+  });
+  $("aStart").addEventListener("click", startAir);
+  $("aNext").addEventListener("click", () => { if (A.i < AIR_STEPS.length - 1) { A.i++; A._done = undefined; showAir(); } else finishAir(); });
+  $("aQuit").addEventListener("click", () => { A.on = false; callout(""); hudShown = false; $("aRun").hidden = true; $("aSetup").hidden = false; look("driver"); });
+  $("aFast").addEventListener("click", () => { const on = S.timeScale === 1; S.timeScale = on ? 4 : 1; $("aFast").setAttribute("aria-pressed", String(on)); });
+  function finishAir() {
+    A.on = false; callout(""); hudShown = false; S.timeScale = 1; $("aFast").setAttribute("aria-pressed", "false");
+    $("aRun").hidden = true; $("aDone").hidden = false;
+    $("aDone").innerHTML = `<h2>Air brake check done</h2><p class="lead">You did all four parts of the air brake check plus the parking and service brake checks. On the test you'll have to explain each one out loud while you do it.</p>
+      <div class="row"><button class="primary" type="button" id="aGoTest">Take the test</button><button type="button" id="aAgain">Practice again</button></div>`;
+  }
+  $("aDone").addEventListener("click", (e) => { if (e.target.id === "aGoTest") setMode("test"); if (e.target.id === "aAgain") startAir(); });
+
+  // =============================================================================================
+  // TEST tab
+  // =============================================================================================
+  const T = { on: false, i: 0, list: [], res: [], phase: "", air: null };
+  const TEST_ITEMS = STEPS.filter((s) => !["trailer_air_supply"].includes(s.id));
+  function startTest() {
+    resetSim(Math.random() < 0.5 ? shuffle(["leak", "warning", "pop", "governor"])[0] : null);
+    hudShown = false; S.p = 80; S.s = 79;
+    T.on = true; T.i = 0; T.res = []; T.list = TEST_ITEMS.slice(); T.phase = "items";
+    T.air = { part: 0, leakStart: null, settle: 0, leakLost: null, log: [], verdicts: {} };
+    $("tSetup").hidden = true; $("tDone").hidden = true; $("tRun").hidden = false; $("tCtl").innerHTML = "";
+    showTestItem();
+  }
+  function itemOptions(p) {
+    const others = shuffle(STEPS.filter((q) => q.id !== p.id && q.check !== p.check)).slice(0, 3).map((q) => q.check);
+    const opts = shuffle([p.check, ...others]);
+    return { opts, right: opts.indexOf(p.check) };
+  }
+  function showTestItem() {
+    const p = T.list[T.i];
+    $("tProg").textContent = `Part 1 · item ${T.i + 1} of ${T.list.length}`; $("tPart").textContent = p.group;
+    $("tBar").style.width = `${(100 * T.i) / (T.list.length + 4)}%`;
+    $("tQ").textContent = `The examiner points here: ${p.title}. What do you check?`;
+    $("tBody").innerHTML = ""; $("tClock").hidden = true; $("tFast").hidden = true;
+    callout("What do you check here?"); look(p.id);
+    if (p.act === "indicators") runAct("indicators");
+    const o = itemOptions(p); T.cur = o;
+    $("tOpts").innerHTML = o.opts.map((t, i) => `<button type="button" data-o="${i}"><b>${"ABCD"[i]}</b><span>${esc(t)}</span></button>`).join("");
+  }
+  $("tOpts").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-o]"); if (!b || !T.on) return;
+    if (T.phase === "items") {
+      const p = T.list[T.i], ok = +b.dataset.o === T.cur.right;
+      T.res.push({ kind: "item", p, ok, yours: T.cur.opts[+b.dataset.o] });
+      if (T.i < T.list.length - 1) { T.i++; showTestItem(); } else startAirTest();
+    } else if (T.phase === "air") airVerdict(+b.dataset.o);
+  });
+
+  // Part 2: the student performs the air brake check with no hints
+  const AIR_PARTS = [
+    { title: "Show me your governor cut-out check.", view: "air_primary",
+      ready: () => S.events.some((e) => e.type === "cutOut"),
+      verdict: () => ({ q: "Where did the governor cut out, and is it OK?", opts: [["Cut out within 120 to 140 psi: OK", SP.cutOut >= 120 && SP.cutOut <= 140], ["Cut out above 140 psi: report it, the truck fails", SP.cutOut > 140], ["Cut out below 100 psi: OK", false]] }),
+      reading: () => `cut-out at ${SP.cutOut} psi` },
+    { title: "Show me your air leakage test.", view: "air_primary",
+      ready: () => T.air.leakLost != null,
+      verdict: () => ({ q: `You lost ${T.air.leakLost} psi in one minute. Is that OK?`, opts: [["4 psi or less: OK for a combination", T.air.leakLost <= 4], ["More than 4 psi: too much leakage, the truck fails", T.air.leakLost > 4], ["Any loss at all fails", false]] }),
+      reading: () => `lost ${T.air.leakLost} psi in one minute` },
+    { title: "Show me your low-air warning test.", view: "cluster",
+      ready: () => S.events.some((e) => e.type === "warn"),
+      verdict: () => { const w = (S.events.find((e) => e.type === "warn") || {}).psi; return { q: `The warning came on at about ${w} psi. Is that OK?`, opts: [["It came on before 55 psi: OK", w >= 55], ["It came on below 55 psi: the warning fails", w < 55], ["The warning should come on above 100 psi", false]] }; },
+      reading: () => `warning at ${(S.events.find((e) => e.type === "warn") || {}).psi} psi` },
+    { title: "Show me your emergency brake (spring brake) test.", view: "valves",
+      ready: () => S.events.some((e) => e.type === "yellowPop") && S.events.some((e) => e.type === "redPop"),
+      verdict: () => { const y = (S.events.find((e) => e.type === "yellowPop") || {}).psi, r = (S.events.find((e) => e.type === "redPop") || {}).psi; const okv = y >= 20 && y <= 45 && r >= 20 && r <= 45 && r >= y;
+        return { q: `The red valve popped at about ${r} psi and the yellow at about ${y} psi. Is that OK?`, opts: [["Between 20 and 45 psi, red first or together: OK", okv], ["Outside 20 to 45 psi: the spring brakes fail", !okv], ["They should pop above 60 psi", false]] }; },
+      reading: () => `red at ${(S.events.find((e) => e.type === "redPop") || {}).psi} psi, yellow at ${(S.events.find((e) => e.type === "yellowPop") || {}).psi} psi` },
+  ];
+  function startAirTest() {
+    // Part 2 starts from a cold truck with the same (possible) defect
+    const fault = S.fault; resetSim(fault); S.p = 80; S.s = 79; indicatorDemoT = 0;
+    T.phase = "air"; T.air.part = 0; hudShown = false;
+    $("tOpts").innerHTML = "";
+    $("tFast").hidden = false;
+    T.upd = controls($("tCtl"));
+    showAirPart();
+  }
+  function showAirPart() {
+    const ap = AIR_PARTS[T.air.part];
+    $("tProg").textContent = `Part 2 · air brake check ${T.air.part + 1} of 4`; $("tPart").textContent = "Air brake check";
+    $("tBar").style.width = `${(100 * (T.list.length + T.air.part)) / (T.list.length + 4)}%`;
+    $("tQ").textContent = ap.title;
+    $("tBody").innerHTML = `<p class="lead">Use the controls below. No hints: do it the way you would on the test. Answer when the examiner asks.</p>`;
+    $("tOpts").innerHTML = ""; T.air.asked = false;
+    callout(ap.title); look(ap.view);
+  }
+  uiTickers.push((dt) => {
+    if (!T.on || T.phase !== "air") return;
+    if (T.upd) T.upd();
+    const ap = AIR_PARTS[T.air.part];
+    if (T.air.part === 1 && T.air.leakLost == null) {
+      const r = leakTick(dt, T.air), c = $("tClock"); c.hidden = !r;
+      if (r && r.phase === "settle") c.textContent = "Let the needle settle…";
+      if (r && r.phase === "timing") { c.textContent = `0:${String(Math.min(60, Math.floor(r.el))).padStart(2, "0")}`; if (r.el >= 60) { T.air.leakLost = Math.max(0, Math.round(r.lost)); c.textContent = "1:00"; } }
+    } else $("tClock").hidden = true;
+    if (!T.air.asked && ap.ready()) {
+      T.air.asked = true;
+      const v0 = ap.verdict(); const v = { q: v0.q, opts: shuffle(v0.opts) }; T.air.cur = v;
+      $("tBody").innerHTML += `<p style="font-weight:600;margin-top:8px">${esc(v.q)}</p>`;
+      $("tOpts").innerHTML = v.opts.map((o, i) => `<button type="button" data-o="${i}"><b>${"ABC"[i]}</b><span>${esc(o[0])}</span></button>`).join("");
+    }
+  });
+  function airVerdict(i) {
+    const ap = AIR_PARTS[T.air.part], v = T.air.cur;
+    // procedure checks for this part
+    let proc = true, procNote = "";
+    if (T.air.part === 1) {
+      proc = T.air.leakLost != null;
+      if (!proc) procNote = "The leak test wasn't done for a full minute with the engine off, brakes released and the pedal held.";
+    }
+    const ok = !!v.opts[i][1] && proc;
+    T.res.push({ kind: "air", title: ap.title, ok, yours: v.opts[i][0], right: (v.opts.find((o) => o[1]) || [""])[0], reading: ap.reading(), procNote });
+    if (T.air.part < AIR_PARTS.length - 1) { T.air.part++; showAirPart(); } else finishTest();
+  }
+  function finishTest() {
+    T.on = false; callout(""); hudShown = false; S.timeScale = 1; $("tFast").setAttribute("aria-pressed", "false");
+    $("tRun").hidden = true; $("tDone").hidden = false; $("tCtl").innerHTML = "";
+    const items = T.res.filter((r) => r.kind === "item"), air = T.res.filter((r) => r.kind === "air");
+    const gi = items.filter((r) => r.ok).length, ga = air.filter((r) => r.ok).length;
+    const pct = Math.round((100 * gi) / Math.max(1, items.length));
+    const airFail = ga < air.length;
+    const pass = !airFail && pct >= 80;
+    const faultText = { leak: "This truck had an air leak (about 6 psi a minute).", governor: "This truck's governor cut out too high (150 psi).", warning: "This truck's low-air warning came on too late (about 50 psi).", pop: "This truck's spring brake valves popped too late (about 15 psi)." }[S.fault] || "This truck had no defects.";
+    $("tDone").innerHTML = `<h2>${pass ? "Passed" : "Not passed yet"}</h2>
+      <p class="big">${gi} / ${items.length}</p><p class="score">in-cab items (${pct}%) · air brake check ${ga} / ${air.length}</p>
+      ${airFail ? `<div class="auto">Air brake check: automatic failure. In California, every part of the air brake check must be explained and demonstrated correctly.</div>` : ""}
+      <p class="lead">${esc(faultText)}</p>
+      <h2>Air brake check</h2>${air.map((r) => `<div class="miss ${r.ok ? "ok" : ""}"><b>${esc(r.title)}</b><p>Reading: ${esc(r.reading)}. You said: ${esc(r.yours)}</p>${r.ok ? "" : `<p>Correct: ${esc(r.right)}</p>`}${r.procNote ? `<p>${esc(r.procNote)}</p>` : ""}</div>`).join("")}
+      <h2>In-cab items you missed</h2>${items.filter((r) => !r.ok).map((r) => `<div class="miss"><b>${esc(r.p.title)}</b><p>Check: ${esc(r.p.check)}</p></div>`).join("") || `<p class="lead">None. Nice work.</p>`}
+      <div class="row" style="margin-top:14px"><button class="primary" type="button" id="tAgain">Take it again</button></div>`;
+    look("driver");
+  }
+  $("tDone").addEventListener("click", (e) => { if (e.target.id === "tAgain") startTest(); });
+  $("tStart").addEventListener("click", startTest);
+  $("tEnd").addEventListener("click", () => { T.on = false; callout(""); hudShown = false; $("tRun").hidden = true; $("tSetup").hidden = false; $("tCtl").innerHTML = ""; look("driver"); });
+  $("tFast").addEventListener("click", () => { const on = S.timeScale === 1; S.timeScale = on ? 4 : 1; $("tFast").setAttribute("aria-pressed", String(on)); });
+
+  // =============================================================================================
+  // tabs
+  // =============================================================================================
+  let mode = "learn";
+  function setMode(m) {
+    if (m === mode) return;
+    L.on = false; A.on = false; T.on = false; hudShown = false; callout(""); S.timeScale = 1;
+    $("lRun").hidden = true; $("lSetup").hidden = false; $("aRun").hidden = true; $("aSetup").hidden = false; $("tRun").hidden = true; $("tSetup").hidden = false;
+    $("lDone").hidden = true; $("aDone").hidden = true; $("tDone").hidden = true;
+    mode = m;
+    for (const [id, k] of [["tabLearn", "learn"], ["tabAir", "air"], ["tabTest", "test"]]) $(id).setAttribute("aria-pressed", String(m === k));
+    $("learn").hidden = m !== "learn"; $("air").hidden = m !== "air"; $("test").hidden = m !== "test";
+    resetSim(); look("driver");
+  }
+  $("tabLearn").addEventListener("click", () => setMode("learn"));
+  $("tabAir").addEventListener("click", () => setMode("air"));
+  $("tabTest").addEventListener("click", () => setMode("test"));
+
+  // automated testing only: incab.html?debug speeds up the simulation clock
+  if (/[?&]debug\b/.test(location.search)) window.__incab = { S, SP: () => SP, fast: (k) => { DEBUG_SCALE = k; } };
+  // let the app open a specific tab: incab.html#air or #test
+  const h = (location.hash || "").replace("#", "");
+  if (h === "air" || h === "test") setTimeout(() => setMode(h), 0);
+  init3D();
+})();
+</script>
+</body>
+</html>

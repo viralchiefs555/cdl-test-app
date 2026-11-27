@@ -31,7 +31,7 @@ import java.io.ByteArrayInputStream
 // The 3D page and model live in app/src/main/assets/pretrip3d/.
 // They are served from a fake https origin so the page can fetch() the .glb model.
 private const val ASSET_HOST = "appassets.androidplatform.net"
-private const val START_URL = "https://$ASSET_HOST/assets/pretrip3d/index.html"
+private fun startUrl(page: String) = "https://$ASSET_HOST/assets/pretrip3d/$page"
 
 private fun mimeFor(path: String): String = when (path.substringAfterLast('.', "").lowercase()) {
     "html" -> "text/html"
@@ -45,18 +45,23 @@ private fun mimeFor(path: String): String = when (path.substringAfterLast('.', "
 }
 
 /**
- * Full-screen 3D tractor-trailer with Find it and Test modes. The camera is moved only by the app.
+ * Full-screen 3D page from assets/pretrip3d. The camera is moved only by the app.
+ * index.html is the walk-around (Find it and Test); incab.html is the in-cab and air brake check.
  * three.js is bundled in assets/pretrip3d/three, so this works offline.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PreTrip3DScreen(onBack: () -> Unit) {
+fun PreTrip3DScreen(
+    onBack: () -> Unit,
+    page: String = "index.html",
+    title: String = "Pre-Trip Inspection"
+) {
     BackHandler(onBack = onBack)
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text("Pre-Trip Inspection") },
+                title = { Text(title) },
                 navigationIcon = {
                     IconButton(
                         onClick = onBack,
@@ -72,7 +77,7 @@ fun PreTrip3DScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            factory = { context -> createInspectionWebView(context) },
+            factory = { context -> createInspectionWebView(context, startUrl(page)) },
             onRelease = { webView ->
                 webView.stopLoading()
                 webView.destroy()
@@ -82,7 +87,7 @@ fun PreTrip3DScreen(onBack: () -> Unit) {
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun createInspectionWebView(context: android.content.Context): WebView {
+private fun createInspectionWebView(context: android.content.Context, url: String): WebView {
     val appAssets = context.applicationContext.assets
     return WebView(context).apply {
         layoutParams = ViewGroup.LayoutParams(
@@ -129,6 +134,6 @@ private fun createInspectionWebView(context: android.content.Context): WebView {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                 request.url.host != ASSET_HOST // keep the WebView on the 3D page
         }
-        loadUrl(START_URL)
+        loadUrl(url)
     }
 }

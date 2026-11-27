@@ -47,7 +47,8 @@ enum class Screen {
     HISTORY,
     CHEAT_SHEET,
     AI_REVIEW,
-    PRE_TRIP
+    PRE_TRIP,
+    IN_CAB_CHECK
 }
 
 data class AiReviewState(
