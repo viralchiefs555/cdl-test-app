@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import com.example.ai.AiReviewManager
@@ -28,7 +31,9 @@ import com.example.ai.CoachLiveVoice
 import com.example.ai.CoachMode
 import com.example.ai.LiveVoiceStatus
 import com.example.ai.MessageSender
+import com.example.ai.OfflineCoach
 import com.example.ai.QuizFocus
+import com.example.ai.StudentData
 import com.example.ai.TtsManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -140,6 +145,13 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Set when the student taps Stop, so the rest of a streaming answer stays quiet. */
     private var suppressSpeechThisTurn = false
+
+    /** Answers from the app's own study material whenever Gemini can't be reached. */
+    private val offlineCoach = OfflineCoach()
+
+    /** After Gemini fails, answer from the study guide right away for a while instead of waiting on it again. */
+    private var aiBlockedUntil = 0L
+    private var lastAiFailureReason: String? = null
 
     private var timerJob: Job? = null
 
@@ -560,6 +572,27 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private fun studentData(): StudentData {
+        val state = _uiState.value
+        return StudentData(
+            history = repository.historyFlow.value,
+            readiness = state.categoryReadiness,
+            overallReadiness = state.overallReadiness,
+            missedIds = repository.missedQuestionsFlow.value
+        )
+    }
+
+    private fun hasNetwork(): Boolean {
+        return try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return true
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        } catch (e: Exception) {
+            true
+        }
+    }
+
     private fun speakIfAuto(text: String) {
         if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
             ttsManager.speak(text, TextToSpeech.QUEUE_FLUSH)
@@ -647,6 +680,16 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
             runCoachTurn(displayMessages, historyForModel, prompt, mode, fallback, onComplete)
         }
 
+        // No connection, or Gemini failed a moment ago: answer from the study guide right away.
+        if (!hasNetwork()) {
+            handleCoachFailure(displayMessages, fallback, retry, onComplete, "no internet connection")
+            return
+        }
+        if (System.currentTimeMillis() < aiBlockedUntil) {
+            handleCoachFailure(displayMessages, fallback, retry, onComplete, lastAiFailureReason ?: "the AI couldn't be reached")
+            return
+        }
+
         aiJob = viewModelScope.launch {
             try {
                 val reply = streamAndSpeak(historyForModel, prompt, mode)
@@ -662,33 +705,43 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 lastFailedRequest = null
+                aiBlockedUntil = 0L
                 onComplete?.invoke(finalText, true)
             } catch (e: TimeoutCancellationException) {
                 Log.w("CDLViewModel", "Coach Mac request timed out", e)
-                handleCoachFailure(displayMessages, fallback, retry, onComplete)
+                noteAiFailure(e, blockMs = 60_000L)
+                handleCoachFailure(displayMessages, fallback, retry, onComplete, lastAiFailureReason ?: "")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e("CDLViewModel", "Coach Mac request failed", e)
-                handleCoachFailure(displayMessages, fallback, retry, onComplete)
+                noteAiFailure(e, blockMs = 3 * 60_000L)
+                handleCoachFailure(displayMessages, fallback, retry, onComplete, lastAiFailureReason ?: "")
             }
         }
+    }
+
+    private fun noteAiFailure(e: Throwable, blockMs: Long) {
+        lastAiFailureReason = OfflineCoach.describeFailure(e)
+        aiBlockedUntil = System.currentTimeMillis() + blockMs
     }
 
     private fun handleCoachFailure(
         displayMessages: List<ChatMessage>,
         fallback: (() -> String)?,
         retry: () -> Unit,
-        onComplete: ((String, Boolean) -> Unit)?
+        onComplete: ((String, Boolean) -> Unit)?,
+        reason: String
     ) {
         val text = fallback?.invoke() ?: aiReviewManager.offlineNotice()
         lastFailedRequest = retry
+        val why = reason.ifBlank { "the AI couldn't be reached" }
         updateAi {
             it.copy(
                 isLoading = false,
                 streamingText = "",
                 messages = displayMessages + ChatMessage(sender = MessageSender.AI, text = text),
-                error = "Couldn't reach the Coach Mac server. Check your connection, then tap Retry."
+                error = "Coach Mac answered from your study guide because $why."
             )
         }
         speakIfAuto(text)
@@ -697,6 +750,7 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The Retry button: re-runs the request that failed, or restarts the session. */
     fun retryLastCoachRequest() {
+        aiBlockedUntil = 0L
         val retry = lastFailedRequest
         if (retry != null) {
             lastFailedRequest = null
@@ -722,6 +776,7 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         aiJob?.cancel()
         stopLiveVoice()
         lastFailedRequest = null
+        offlineCoach.reset()
 
         val alreadyOnCoach = _uiState.value.currentScreen == Screen.AI_REVIEW
         _uiState.update {
@@ -749,8 +804,8 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
             prompt = prompt,
             mode = CoachMode.DEBRIEF,
             fallback = {
-                if (targetResult != null) aiReviewManager.generateLocalFallbackDebrief(targetResult)
-                else aiReviewManager.generateLocalGeneralGreeting()
+                if (targetResult != null) offlineCoach.debrief(targetResult, studentData())
+                else offlineCoach.greeting(studentData())
             }
         )
     }
@@ -812,7 +867,8 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
             historyForModel = state.messages,
             prompt = aiReviewManager.createStepByStepPrompt(item, index, missedList.size),
             mode = CoachMode.DEBRIEF,
-            fallback = { aiReviewManager.generateLocalStepReview(item, index, missedList.size) }
+            fallback = { offlineCoach.stepReview(item, index, missedList.size) },
+            onComplete = { _, _ -> offlineCoach.noteTopic(item.question) }
         )
     }
 
@@ -840,6 +896,13 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         // Starting a quiz.
         if (containsAny(lower, listOf("quiz me", "quiz on", "start a quiz", "start quiz", "test me", "voice quiz", "give me a quiz"))) {
             startQuiz(quizFocusFrom(lower), trimmed)
+            return
+        }
+
+        // "Yes" to Coach Mac's offer of a quiz.
+        val lastAiText = state.messages.lastOrNull { it.sender == MessageSender.AI }?.text?.lowercase() ?: ""
+        if (state.currentMissedIndex == null && lastAiText.contains("quiz") && isAffirmative(lower)) {
+            startQuiz(quizFocusForTopic(offlineCoach.currentTopic()), trimmed)
             return
         }
 
@@ -881,10 +944,21 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
             missedIndex = state.currentMissedIndex,
             totalMissed = state.missedQuestions.size
         )
-        val fallback: (() -> String)? = if (currentMissed != null) {
-            { aiReviewManager.offlineWithReference(currentMissed.question) }
-        } else {
-            null
+        val quizQuestion = state.quiz?.current
+        val missedIndex = state.currentMissedIndex
+        val totalMissed = state.missedQuestions.size
+        val fallback: () -> String = {
+            val reply = offlineCoach.answer(trimmed, studentData(), currentMissed, quizQuestion)
+            if (currentMissed != null && missedIndex != null) {
+                val next = if (missedIndex + 1 >= totalMissed) {
+                    "That was the last question you missed. Ready to retake the test?"
+                } else {
+                    "Are you ready to go to the next question that you missed?"
+                }
+                "$reply $next"
+            } else {
+                reply
+            }
         }
 
         runCoachTurn(
@@ -892,7 +966,10 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
             historyForModel = state.messages,
             prompt = prompt,
             mode = CoachMode.TUTOR,
-            fallback = fallback
+            fallback = fallback,
+            onComplete = { _, fromGemini ->
+                if (fromGemini) offlineCoach.noteTopic(references.firstOrNull())
+            }
         )
     }
 
@@ -901,6 +978,24 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         if (CoachKnowledge.tokenize(userText).size >= 3) return userText
         val recent = history.takeLast(2).joinToString(" ") { it.text }
         return "$userText $recent"
+    }
+
+    private fun isAffirmative(lower: String): Boolean {
+        if (lower.length > 30) return false
+        val words = listOf("yes", "yeah", "yep", "sure", "ok", "okay", "let's do it", "lets do it", "do it", "go ahead", "please", "let's go", "lets go")
+        return words.any { lower == it || lower.startsWith("$it ") || lower.startsWith("$it,") || lower.startsWith("$it!") || lower.startsWith("$it.") }
+    }
+
+    private fun quizFocusForTopic(topic: Question?): QuizFocus {
+        if (topic == null) return QuizFocus.WEAK_AREAS
+        val s = topic.subtopic.lowercase()
+        if (s.contains("inspect") || s.contains("pre-trip") || s.contains("leak test")) return QuizFocus.PRE_TRIP
+        return when (topic.category) {
+            CDLCategory.AIR_BRAKES -> QuizFocus.AIR_BRAKES
+            CDLCategory.HAZMAT -> QuizFocus.HAZMAT
+            CDLCategory.COMBINATION_VEHICLES -> QuizFocus.COMBINATION
+            CDLCategory.GENERAL_KNOWLEDGE -> QuizFocus.GENERAL
+        }
     }
 
     private fun quizFocusFrom(lower: String): QuizFocus = when {
@@ -925,7 +1020,8 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
                 references = CoachKnowledge.formatReferences(references),
                 userText = userText
             ),
-            mode = CoachMode.PLAN
+            mode = CoachMode.PLAN,
+            fallback = { offlineCoach.studyPlan(studentData()) }
         )
     }
 
@@ -1037,17 +1133,20 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val localVerdict = CoachKnowledge.gradeLocally(q, answer)
+        var offlineVerdict: Boolean? = null
         runCoachTurn(
             displayMessages = state.messages + userMsg,
             historyForModel = state.messages,
             prompt = aiReviewManager.createQuizGradePrompt(q, answer, localVerdict),
             mode = CoachMode.QUIZ_GRADE,
             fallback = {
-                if (localVerdict != null) CoachKnowledge.localQuizFeedback(q, localVerdict)
-                else aiReviewManager.offlineQuizNotice(q)
+                val (text, verdict) = offlineCoach.gradeQuiz(q, answer)
+                offlineVerdict = verdict
+                text
             },
             onComplete = { reply, fromGemini ->
-                val verdict = localVerdict ?: if (fromGemini) AiReviewManager.parseVerdict(reply) else null
+                offlineCoach.noteTopic(q)
+                val verdict = localVerdict ?: if (fromGemini) AiReviewManager.parseVerdict(reply) else offlineVerdict
                 recordQuizAnswer(q, correct = verdict == true)
             }
         )
@@ -1134,7 +1233,7 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
                 updateAi {
                     it.copy(
                         liveStatus = LiveVoiceStatus.ERROR,
-                        liveError = "Live voice isn't available right now. Coach Mac's regular voice and chat still work."
+                        liveError = "Live voice isn't available right now (${OfflineCoach.describeFailure(e)}). Coach Mac's regular voice and chat still work."
                     )
                 }
             }

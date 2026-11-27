@@ -504,59 +504,6 @@ fun AiReviewChatScreen(
                 }
             }
 
-            // Error Message (if any)
-            if (aiState.error != null) {
-                item {
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = FailingRedContainer.copy(alpha = 0.6f)),
-                        border = BorderStroke(1.dp, FailingRed),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = FailingRed
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Connection / Review Notice",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = FailingRed
-                                    )
-                                    Text(
-                                        text = aiState.error ?: "",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Button(
-                                onClick = { viewModel.retryLastCoachRequest() },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("retry_ai_review_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Retry", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-
             // Completed Chat Messages
             items(aiState.messages) { message ->
                 ChatMessageBubble(
@@ -565,6 +512,60 @@ fun AiReviewChatScreen(
                     onSpeak = { viewModel.speakMessage(message.text) },
                     onStop = { viewModel.stopSpeaking() }
                 )
+            }
+
+            // Study-guide mode notice: Gemini couldn't answer, so Coach Mac used the app's own material
+            if (aiState.error != null) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = SafetyAmber.copy(alpha = 0.12f)),
+                        border = BorderStroke(1.dp, SafetyAmber.copy(alpha = 0.6f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("study_guide_mode_notice")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = SafetyAmber,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Study-guide mode",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = aiState.error ?: "",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = { viewModel.retryLastCoachRequest() },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("retry_ai_review_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Try AI", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
             }
 
             // Streaming or Loading Indicator

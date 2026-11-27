@@ -79,6 +79,11 @@ object CoachKnowledge {
     /** Lower-cases, splits on anything that isn't a letter or digit, drops filler words. */
     fun tokenize(text: String): Set<String> {
         return text.lowercase()
+            .replace("glad hands", "gladhands")
+            .replace("glad-hands", "gladhands")
+            .replace("pre-trip", "pretrip")
+            .replace("pre trip", "pretrip")
+            .replace("haz mat", "hazmat")
             .split(Regex("[^a-z0-9]+"))
             .filter { it.isNotEmpty() && (it.length >= 2 || it.all { c -> c.isDigit() }) }
             .filter { it !in STOP_WORDS }
@@ -87,12 +92,19 @@ object CoachKnowledge {
     }
 
     private fun stem(token: String): String {
-        return if (token.length > 4 && token.endsWith("s") && !token.endsWith("ss")) {
-            token.dropLast(1)
-        } else {
-            token
+        var t = token
+        if (t.length > 4 && t.endsWith("s") && !t.endsWith("ss")) t = t.dropLast(1)
+        t = when {
+            t.length > 6 && t.endsWith("able") -> t.dropLast(4)
+            t.length > 5 && t.endsWith("ing") -> t.dropLast(3)
+            t.length > 4 && t.endsWith("ed") -> t.dropLast(2)
+            else -> t
         }
+        return t
     }
+
+    /** True when every meaningful word in [query] appears somewhere in the study bank. */
+    fun allWordsKnown(query: String): Boolean = tokenize(query).all { docFreq.containsKey(it) }
 
     /**
      * Returns the study-bank questions closest to [query], best first. Rare words count for more
@@ -127,6 +139,61 @@ object CoachKnowledge {
             .filter { it.second >= best * 0.35 }
             .take(limit)
             .map { it.first }
+    }
+
+    /**
+     * A study-bank match with how well it covers the question: [coverage] is the share of the
+     * question's meaningful words (weighted by rarity) found in the match. Words the bank never
+     * uses, like a state name, count against it, so off-topic questions score low.
+     */
+    data class Match(val question: Question, val score: Double, val coverage: Double)
+
+    fun retrieveScored(query: String, limit: Int = 3, category: CDLCategory? = null): List<Match> {
+        val terms = tokenize(query)
+        if (terms.isEmpty()) return emptyList()
+        val total = index.size.toDouble().coerceAtLeast(1.0)
+        val unknownIdf = ln(1.0 + total)
+        val idf = terms.associateWith { t ->
+            val df = docFreq[t]
+            if (df == null) unknownIdf else ln(1.0 + total / df)
+        }
+        val totalWeight = idf.values.sum().coerceAtLeast(0.0001)
+
+        return index
+            .filter { category == null || it.question.category == category }
+            .map { d ->
+                var score = 0.0
+                var covered = 0.0
+                for (t in terms) {
+                    val w = idf[t] ?: continue
+                    var hit = false
+                    if (t in d.subtopic) { score += 3.0 * w; hit = true }
+                    if (t in d.text) { score += 2.0 * w; hit = true }
+                    if (t in d.answer) { score += 2.0 * w; hit = true }
+                    if (t in d.explanation) { score += 1.0 * w; hit = true }
+                    if (hit) covered += w
+                }
+                Match(d.question, score, covered / totalWeight)
+            }
+            .filter { it.score > 0.0 }
+            .sortedWith(compareByDescending<Match> { it.coverage }.thenByDescending { it.score })
+            .take(limit)
+    }
+
+    /** Relaxed wording match for spoken quiz answers when the strict one can't decide. */
+    fun gradeLoosely(q: Question, answer: String): Boolean? {
+        gradeLocally(q, answer)?.let { return it }
+        val answerTokens = tokenize(answer)
+        if (answerTokens.isEmpty()) return null
+        val overlaps = q.options.map { option ->
+            val optionTokens = tokenize(option)
+            if (optionTokens.isEmpty()) 0.0
+            else optionTokens.count { it in answerTokens }.toDouble() / optionTokens.size
+        }
+        val bestIdx = overlaps.indices.maxByOrNull { overlaps[it] } ?: return null
+        val best = overlaps[bestIdx]
+        val second = overlaps.filterIndexed { i, _ -> i != bestIdx }.maxOrNull() ?: 0.0
+        return if (best >= 0.34 && best - second >= 0.15) bestIdx == q.correctIndex else null
     }
 
     /** Formats study-bank questions as the reference block every Coach Mac prompt carries. */
