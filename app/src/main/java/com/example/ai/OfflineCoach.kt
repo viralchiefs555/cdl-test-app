@@ -62,6 +62,10 @@ class OfflineCoach {
                     "the Firebase API key was rejected"
                 lower.contains("permission_denied") || lower.contains("403") || lower.contains("unauthorized") || lower.contains("401") ->
                     "Firebase refused the request (permission denied)"
+                lower.contains("max_tokens") ->
+                    "the AI reply hit its length limit"
+                lower.contains("safety") || lower.contains("blocked") ->
+                    "the AI blocked the reply for safety"
                 lower.contains("not found") || lower.contains("404") ->
                     "the AI model wasn't found"
                 lower.contains("timeout") || lower.contains("timed out") ->

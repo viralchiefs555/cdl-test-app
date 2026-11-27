@@ -7,6 +7,7 @@ import com.example.data.repository.CDLQuestionRepository
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.Content
+import com.google.firebase.ai.type.ResponseStoppedException
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
 import kotlinx.coroutines.flow.Flow
@@ -77,7 +78,10 @@ class AiReviewManager {
             modelName = MODEL_NAME,
             generationConfig = generationConfig {
                 temperature = 0.4f
-                maxOutputTokens = 360
+                // Generous on purpose: newer Gemini models count their hidden "thinking" against
+                // this limit, and running out makes the SDK throw instead of answering. The
+                // prompts keep the spoken answers short.
+                maxOutputTokens = 8192
             },
             systemInstruction = content {
                 text(
@@ -95,7 +99,7 @@ class AiReviewManager {
             modelName = MODEL_NAME,
             generationConfig = generationConfig {
                 temperature = 0.3f
-                maxOutputTokens = 900
+                maxOutputTokens = 8192
             },
             systemInstruction = content {
                 text(
@@ -337,15 +341,23 @@ class AiReviewManager {
         contents.add(content("user") { text(newPrompt) })
 
         val model = if (mode == CoachMode.DEBRIEF) debriefModel else tutorModel
-        val timeoutMs = if (mode == CoachMode.DEBRIEF) 15_000L else 30_000L
+        val timeoutMs = if (mode == CoachMode.DEBRIEF) 25_000L else 40_000L
 
-        withTimeout(timeoutMs) {
-            model.generateContentStream(contents).collect { chunk ->
-                val chunkText = chunk.text
-                if (!chunkText.isNullOrEmpty()) {
-                    emit(chunkText)
+        var emittedAny = false
+        try {
+            withTimeout(timeoutMs) {
+                model.generateContentStream(contents).collect { chunk ->
+                    val chunkText = chunk.text
+                    if (!chunkText.isNullOrEmpty()) {
+                        emittedAny = true
+                        emit(chunkText)
+                    }
                 }
             }
+        } catch (e: ResponseStoppedException) {
+            // Stopped early (for example the length limit). Keep what was already said rather
+            // than throwing it away; with nothing said, report the failure as usual.
+            if (!emittedAny) throw e
         }
     }
 }
