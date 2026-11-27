@@ -1,6 +1,15 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -34,7 +43,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.CallEnd
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.HeadsetMic
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Quiz
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
@@ -71,22 +85,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.ai.ChatMessage
+import com.example.ai.LiveVoiceStatus
 import com.example.ai.MessageSender
 import com.example.data.models.ExamResult
 import com.example.data.models.Question
 import com.example.data.repository.CDLQuestionRepository
 import com.example.ui.CDLViewModel
+import com.example.ui.QuizState
 import com.example.ui.theme.FailingRed
 import com.example.ui.theme.FailingRedContainer
 import com.example.ui.theme.PassingGreen
 import com.example.ui.theme.PassingGreenContainer
 import com.example.ui.theme.PrimaryBlue
 import com.example.ui.theme.SafetyAmber
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,6 +121,77 @@ fun AiReviewChatScreen(
 
     var inputPrompt by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+
+    // Spoken answers: Android's own speech recognizer screen handles the microphone, so this
+    // needs no extra permission. Whatever the student says is sent like a typed message.
+    val speechLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                viewModel.sendUserChatMessage(spoken)
+            }
+        }
+    }
+    val launchVoiceInput: () -> Unit = {
+        viewModel.stopSpeaking()
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+            putExtra(
+                RecognizerIntent.EXTRA_PROMPT,
+                if (aiState.quiz?.awaitingAnswer == true) "Say your answer" else "Ask Coach Mac"
+            )
+        }
+        try {
+            speechLauncher.launch(intent)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(context, "Voice input isn't available on this device. You can type instead.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Live voice needs the microphone permission.
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.startLiveVoice()
+        } else {
+            Toast.makeText(context, "Live talk needs microphone access.", Toast.LENGTH_LONG).show()
+        }
+    }
+    val isLiveOn = aiState.liveStatus == LiveVoiceStatus.LIVE || aiState.liveStatus == LiveVoiceStatus.CONNECTING
+    val toggleLiveVoice: () -> Unit = {
+        if (isLiveOn) {
+            viewModel.stopLiveVoice()
+        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            viewModel.startLiveVoice()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // Hands-free quiz: once Coach Mac finishes reading a question aloud, open the mic once.
+    val quizQuestionId = aiState.quiz?.current?.id
+    val awaitingQuizAnswer = aiState.quiz?.awaitingAnswer == true
+    var heardSpeakingFor by remember { mutableStateOf<String?>(null) }
+    var autoListenedFor by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(isSpeaking, quizQuestionId, awaitingQuizAnswer) {
+        val id = quizQuestionId
+        if (id != null && awaitingQuizAnswer) {
+            if (isSpeaking) {
+                heardSpeakingFor = id
+            } else if (heardSpeakingFor == id && autoListenedFor != id) {
+                autoListenedFor = id
+                delay(400)
+                launchVoiceInput()
+            }
+        }
+    }
 
     BackHandler {
         viewModel.stopSpeaking()
@@ -110,8 +200,9 @@ fun AiReviewChatScreen(
 
     // Scroll to bottom as new messages arrive
     LaunchedEffect(aiState.messages.size, aiState.streamingText) {
-        if (aiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(aiState.messages.size)
+        val lastIndex = listState.layoutInfo.totalItemsCount - 1
+        if (aiState.messages.isNotEmpty() && lastIndex >= 0) {
+            listState.animateScrollToItem(lastIndex)
         }
     }
 
@@ -170,6 +261,18 @@ fun AiReviewChatScreen(
                     }
                 },
                 actions = {
+                    // Live voice (Gemini Live API) on / off
+                    IconButton(
+                        onClick = toggleLiveVoice,
+                        modifier = Modifier.testTag("live_voice_button")
+                    ) {
+                        Icon(
+                            imageVector = if (isLiveOn) Icons.Default.CallEnd else Icons.Default.RecordVoiceOver,
+                            contentDescription = if (isLiveOn) "End Live Talk" else "Start Live Talk",
+                            tint = if (isLiveOn) FailingRed else MaterialTheme.colorScheme.primary
+                        )
+                    }
+
                     // Speech Speed Selector
                     Surface(
                         shape = RoundedCornerShape(14.dp),
@@ -240,6 +343,7 @@ fun AiReviewChatScreen(
                     categoryName = aiState.activeReviewResult?.category?.shortName ?: "Exam",
                     hasMissedQuestions = aiState.missedQuestions.isNotEmpty(),
                     isStepReviewing = aiState.currentMissedIndex != null,
+                    quiz = aiState.quiz,
                     onSelect = { prompt ->
                         viewModel.sendUserChatMessage(prompt)
                     }
@@ -263,7 +367,9 @@ fun AiReviewChatScreen(
                             onValueChange = { inputPrompt = it },
                             placeholder = {
                                 Text(
-                                    if (aiState.currentMissedIndex != null)
+                                    if (aiState.quiz?.awaitingAnswer == true)
+                                        "Say or type your answer..."
+                                    else if (aiState.currentMissedIndex != null)
                                         "Ask about this question, or say 'next'..."
                                     else if (aiState.activeReviewResult != null)
                                         "Ask Coach Mac anything about this exam..."
@@ -279,7 +385,29 @@ fun AiReviewChatScreen(
                             singleLine = false
                         )
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Speak instead of typing
+                        IconButton(
+                            onClick = launchVoiceInput,
+                            enabled = !aiState.isLoading,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (awaitingQuizAnswer) SafetyAmber.copy(alpha = 0.25f)
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                )
+                                .testTag("ai_voice_input_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Speak Your Message",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
 
                         IconButton(
                             onClick = {
@@ -333,8 +461,30 @@ fun AiReviewChatScreen(
                 }
             }
 
+            // Live voice conversation status
+            if (aiState.liveStatus != LiveVoiceStatus.OFF) {
+                item {
+                    LiveVoiceCard(
+                        status = aiState.liveStatus,
+                        errorText = aiState.liveError,
+                        onEnd = { viewModel.stopLiveVoice() },
+                        onDismiss = { viewModel.dismissLiveError() }
+                    )
+                }
+            }
+
+            // Voice quiz progress
+            aiState.quiz?.let { quiz ->
+                item {
+                    QuizStatusCard(
+                        quiz = quiz,
+                        onStop = { viewModel.endQuiz() }
+                    )
+                }
+            }
+
             // Step-by-Step Missed Questions Review Section
-            if (aiState.missedQuestions.isNotEmpty()) {
+            if (aiState.missedQuestions.isNotEmpty() && aiState.quiz == null) {
                 item {
                     val currentIndex = aiState.currentMissedIndex
                     if (currentIndex != null) {
@@ -387,7 +537,7 @@ fun AiReviewChatScreen(
                             }
                             Spacer(modifier = Modifier.height(10.dp))
                             Button(
-                                onClick = { viewModel.startAiReview(aiState.activeReviewResult) },
+                                onClick = { viewModel.retryLastCoachRequest() },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier
@@ -400,7 +550,7 @@ fun AiReviewChatScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Retry AI Voice Review", fontWeight = FontWeight.Bold)
+                                Text("Retry", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -697,9 +847,20 @@ fun QuickPromptChips(
     categoryName: String,
     hasMissedQuestions: Boolean = false,
     isStepReviewing: Boolean = false,
+    quiz: QuizState? = null,
     onSelect: (String) -> Unit
 ) {
     val prompts = when {
+        quiz != null && quiz.awaitingAnswer -> {
+            val letters = listOf("A", "B", "C", "D", "E", "F")
+            letters.take(quiz.current?.options?.size ?: 4) + listOf("Skip", "Stop quiz")
+        }
+        quiz != null -> listOf(
+            "Next question",
+            "Explain that one more",
+            "Give me a memory trick for that",
+            "Stop quiz"
+        )
         isStepReviewing -> listOf(
             "Yes, I'm ready for the next question!",
             "Give me a memory trick for this question",
@@ -708,11 +869,15 @@ fun QuickPromptChips(
         )
         hasMissedQuestions -> listOf(
             "Let's review each one of the questions that I missed",
+            "Quiz me on my weak areas",
             "Give me a memory trick to remember the correct answers!",
             "Why was my wrong answer unsafe on the road?",
             "Explain the exact FMCSR rule for this topic."
         )
         categoryName == "General" || categoryName == "Exam" -> listOf(
+            "Quiz me on my weak areas",
+            "Quiz me on pre-trip inspection",
+            "Make me a study plan",
             "How do I test air brake leakage?",
             "What are the 9 hazardous materials classes?",
             "How do I stop a trailer jackknife?",
@@ -990,3 +1155,127 @@ fun StepReviewActiveCard(
     }
 }
 
+@Composable
+fun LiveVoiceCard(
+    status: LiveVoiceStatus,
+    errorText: String?,
+    onEnd: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val isError = status == LiveVoiceStatus.ERROR
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isError) FailingRedContainer.copy(alpha = 0.5f) else PassingGreenContainer.copy(alpha = 0.5f)
+        ),
+        border = BorderStroke(1.5.dp, if (isError) FailingRed else PassingGreen),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("live_voice_card")
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            when (status) {
+                LiveVoiceStatus.CONNECTING -> CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = PassingGreen
+                )
+                LiveVoiceStatus.LIVE -> SpeechPulseIndicator()
+                else -> Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = FailingRed
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = when (status) {
+                        LiveVoiceStatus.CONNECTING -> "Connecting live talk..."
+                        LiveVoiceStatus.LIVE -> "Live talk is on"
+                        else -> "Live talk unavailable"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = when (status) {
+                        LiveVoiceStatus.LIVE -> "Just talk to Coach Mac out loud, hands-free. Wait for him to finish before you answer."
+                        LiveVoiceStatus.CONNECTING -> "Getting Coach Mac's live voice ready."
+                        else -> errorText ?: "Live voice isn't available right now."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            if (isError) {
+                IconButton(onClick = onDismiss, modifier = Modifier.testTag("dismiss_live_error_button")) {
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Dismiss")
+                }
+            } else {
+                Button(
+                    onClick = onEnd,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = FailingRed),
+                    modifier = Modifier.testTag("end_live_voice_button")
+                ) {
+                    Text("End", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QuizStatusCard(
+    quiz: QuizState,
+    onStop: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = SafetyAmber.copy(alpha = 0.12f)),
+        border = BorderStroke(1.5.dp, SafetyAmber.copy(alpha = 0.6f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("quiz_status_card")
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Quiz,
+                contentDescription = null,
+                tint = SafetyAmber,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Voice quiz: ${quiz.focus.label}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Question ${quiz.number} · Score ${quiz.correctCount} of ${quiz.answeredCount}" +
+                        if (quiz.awaitingAnswer) " · Your turn: tap the mic or a letter" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            OutlinedButton(
+                onClick = onStop,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.testTag("stop_quiz_button")
+            ) {
+                Text("Stop")
+            }
+        }
+    }
+}

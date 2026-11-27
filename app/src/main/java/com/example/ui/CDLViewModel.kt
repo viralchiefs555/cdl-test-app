@@ -19,9 +19,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+import android.speech.tts.TextToSpeech
+import android.util.Log
 import com.example.ai.AiReviewManager
 import com.example.ai.ChatMessage
+import com.example.ai.CoachKnowledge
+import com.example.ai.CoachLiveVoice
+import com.example.ai.CoachMode
+import com.example.ai.LiveVoiceStatus
 import com.example.ai.MessageSender
+import com.example.ai.QuizFocus
 import com.example.ai.TtsManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -45,7 +52,22 @@ data class AiReviewState(
     val isAutoSpeechEnabled: Boolean = true,
     val activeReviewResult: ExamResult? = null,
     val missedQuestions: List<MissedQuestionDetail> = emptyList(),
-    val currentMissedIndex: Int? = null
+    val currentMissedIndex: Int? = null,
+    val quiz: QuizState? = null,
+    val liveStatus: LiveVoiceStatus = LiveVoiceStatus.OFF,
+    val liveError: String? = null
+)
+
+/** A Coach Mac voice quiz in progress. */
+data class QuizState(
+    val focus: QuizFocus = QuizFocus.WEAK_AREAS,
+    val current: Question? = null,
+    val number: Int = 0,
+    val answeredCount: Int = 0,
+    val correctCount: Int = 0,
+    val awaitingAnswer: Boolean = false,
+    val askedIds: Set<String> = emptySet(),
+    val lastGradedId: String? = null
 )
 
 data class ExamSessionState(
@@ -110,6 +132,15 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
     private val aiReviewManager = AiReviewManager()
     private var aiJob: Job? = null
 
+    private val liveVoice = CoachLiveVoice()
+    private var liveJob: Job? = null
+
+    /** Re-runs the last Coach Mac request that couldn't reach the server (the Retry button). */
+    private var lastFailedRequest: (() -> Unit)? = null
+
+    /** Set when the student taps Stop, so the rest of a streaming answer stays quiet. */
+    private var suppressSpeechThisTurn = false
+
     private var timerJob: Job? = null
 
     init {
@@ -170,6 +201,7 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
             if (_uiState.value.currentScreen == Screen.AI_REVIEW) {
                 ttsManager.stop()
                 aiJob?.cancel()
+                stopLiveVoice()
             }
 
             _uiState.update {
@@ -511,6 +543,169 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         refreshReadiness()
     }
 
+
+    // =============================================================================================
+    // Coach Mac
+    // =============================================================================================
+
+    private val sentenceEnd = Regex("""[.!?]+["')\]]*\s+""")
+
+    private fun currentProfile(): String {
+        val state = _uiState.value
+        return CoachKnowledge.buildStudentProfile(
+            history = repository.historyFlow.value,
+            readiness = state.categoryReadiness,
+            overallReadiness = state.overallReadiness,
+            missedIds = repository.missedQuestionsFlow.value
+        )
+    }
+
+    private fun speakIfAuto(text: String) {
+        if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
+            ttsManager.speak(text, TextToSpeech.QUEUE_FLUSH)
+        }
+    }
+
+    private fun updateAi(transform: (AiReviewState) -> AiReviewState) {
+        _uiState.update { s -> s.copy(aiReviewState = transform(s.aiReviewState)) }
+    }
+
+    /**
+     * Streams one Coach Mac reply, showing it as it arrives and speaking each finished sentence
+     * right away, so the student hears the answer while the rest is still coming in.
+     */
+    private suspend fun streamAndSpeak(
+        history: List<ChatMessage>,
+        prompt: String,
+        mode: CoachMode
+    ): String {
+        val full = StringBuilder()
+        var spokenCursor = 0
+        var firstUtterance = true
+
+        aiReviewManager.streamResponse(history, prompt, mode).collect { chunk ->
+            full.append(chunk)
+            val current = full.toString()
+            updateAi { it.copy(isLoading = false, streamingText = current) }
+
+            if (_uiState.value.aiReviewState.isAutoSpeechEnabled && !suppressSpeechThisTurn) {
+                while (true) {
+                    val unvoiced = current.substring(spokenCursor)
+                    val match = sentenceEnd.find(unvoiced) ?: break
+                    val end = match.range.last + 1
+                    val sentence = unvoiced.substring(0, end).trim()
+                    spokenCursor += end
+                    if (sentence.isNotBlank()) {
+                        ttsManager.speak(
+                            sentence,
+                            if (firstUtterance) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                        )
+                        firstUtterance = false
+                    }
+                }
+            }
+        }
+
+        val all = full.toString()
+        if (_uiState.value.aiReviewState.isAutoSpeechEnabled && !suppressSpeechThisTurn && spokenCursor < all.length) {
+            val remaining = all.substring(spokenCursor).trim()
+            if (remaining.isNotBlank()) {
+                ttsManager.speak(
+                    remaining,
+                    if (firstUtterance) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                )
+            }
+        }
+        return all.trim()
+    }
+
+    /**
+     * Runs one Coach Mac turn. [displayMessages] is the chat as shown, including the student's new
+     * message if there is one; [historyForModel] is the earlier conversation Gemini remembers. When
+     * the server can't be reached, [fallback] supplies exact app data if there is any, otherwise
+     * Coach Mac says it can't answer, and the Retry button re-runs the same turn.
+     * [onComplete] gets the final text and whether it came from Gemini.
+     */
+    private fun runCoachTurn(
+        displayMessages: List<ChatMessage>,
+        historyForModel: List<ChatMessage>,
+        prompt: String,
+        mode: CoachMode,
+        fallback: (() -> String)? = null,
+        onComplete: ((String, Boolean) -> Unit)? = null
+    ) {
+        ttsManager.stop()
+        aiJob?.cancel()
+        stopLiveVoice()
+        suppressSpeechThisTurn = false
+
+        updateAi {
+            it.copy(isLoading = true, streamingText = "", messages = displayMessages, error = null)
+        }
+
+        val retry: () -> Unit = {
+            runCoachTurn(displayMessages, historyForModel, prompt, mode, fallback, onComplete)
+        }
+
+        aiJob = viewModelScope.launch {
+            try {
+                val reply = streamAndSpeak(historyForModel, prompt, mode)
+                val finalText = reply.ifBlank {
+                    "Sorry, I lost my train of thought there. Could you say that again?"
+                }
+                updateAi {
+                    it.copy(
+                        isLoading = false,
+                        streamingText = "",
+                        messages = displayMessages + ChatMessage(sender = MessageSender.AI, text = finalText),
+                        error = null
+                    )
+                }
+                lastFailedRequest = null
+                onComplete?.invoke(finalText, true)
+            } catch (e: TimeoutCancellationException) {
+                Log.w("CDLViewModel", "Coach Mac request timed out", e)
+                handleCoachFailure(displayMessages, fallback, retry, onComplete)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e("CDLViewModel", "Coach Mac request failed", e)
+                handleCoachFailure(displayMessages, fallback, retry, onComplete)
+            }
+        }
+    }
+
+    private fun handleCoachFailure(
+        displayMessages: List<ChatMessage>,
+        fallback: (() -> String)?,
+        retry: () -> Unit,
+        onComplete: ((String, Boolean) -> Unit)?
+    ) {
+        val text = fallback?.invoke() ?: aiReviewManager.offlineNotice()
+        lastFailedRequest = retry
+        updateAi {
+            it.copy(
+                isLoading = false,
+                streamingText = "",
+                messages = displayMessages + ChatMessage(sender = MessageSender.AI, text = text),
+                error = "Couldn't reach the Coach Mac server. Check your connection, then tap Retry."
+            )
+        }
+        speakIfAuto(text)
+        onComplete?.invoke(text, false)
+    }
+
+    /** The Retry button: re-runs the request that failed, or restarts the session. */
+    fun retryLastCoachRequest() {
+        val retry = lastFailedRequest
+        if (retry != null) {
+            lastFailedRequest = null
+            retry()
+        } else {
+            startAiReview(_uiState.value.aiReviewState.activeReviewResult)
+        }
+    }
+
     fun startAiReview(result: ExamResult? = null) {
         val targetResult = result ?: _uiState.value.lastResult
         val missed = targetResult?.let { res ->
@@ -525,134 +720,39 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
 
         ttsManager.stop()
         aiJob?.cancel()
+        stopLiveVoice()
+        lastFailedRequest = null
 
+        val alreadyOnCoach = _uiState.value.currentScreen == Screen.AI_REVIEW
         _uiState.update {
             it.copy(
                 currentScreen = Screen.AI_REVIEW,
-                screenStack = it.screenStack + Screen.AI_REVIEW,
+                screenStack = if (alreadyOnCoach) it.screenStack else it.screenStack + Screen.AI_REVIEW,
                 aiReviewState = AiReviewState(
                     isLoading = true,
-                    streamingText = "",
-                    messages = emptyList(),
-                    error = null,
-                    isAutoSpeechEnabled = true,
+                    isAutoSpeechEnabled = it.aiReviewState.isAutoSpeechEnabled,
                     activeReviewResult = targetResult,
-                    missedQuestions = missed,
-                    currentMissedIndex = null
+                    missedQuestions = missed
                 )
             )
         }
 
-        aiJob = viewModelScope.launch {
-            try {
-                val initialPrompt = if (targetResult != null) {
-                    aiReviewManager.createInitialReviewPrompt(targetResult)
-                } else {
-                    aiReviewManager.createGeneralTutorPrompt()
-                }
-                val fullResponse = StringBuilder()
-                var spokenCursor = 0
-
-                aiReviewManager.streamResponse(emptyList(), initialPrompt).collect { chunk ->
-                    fullResponse.append(chunk)
-                    val currentText = fullResponse.toString()
-
-                    _uiState.update { state ->
-                        state.copy(
-                            aiReviewState = state.aiReviewState.copy(
-                                isLoading = false,
-                                streamingText = currentText
-                            )
-                        )
-                    }
-
-                    // Sentence-level streaming TTS: speak as soon as a complete sentence is ready
-                    if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                        val unvoiced = currentText.substring(spokenCursor)
-                        val sentenceBoundaryRegex = Regex("""[.!?](\s+|\n+|$)""")
-                        val match = sentenceBoundaryRegex.find(unvoiced)
-                        if (match != null) {
-                            val sentenceEnd = match.range.last + 1
-                            val sentence = unvoiced.substring(0, sentenceEnd).trim()
-                            if (sentence.isNotBlank()) {
-                                val queueMode = if (spokenCursor == 0) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD
-                                ttsManager.speak(sentence, queueMode)
-                                spokenCursor += sentenceEnd
-                            }
-                        }
-                    }
-                }
-
-                val finalMessageText = fullResponse.toString().trim()
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled && spokenCursor < finalMessageText.length) {
-                    val remaining = finalMessageText.substring(spokenCursor).trim()
-                    if (remaining.isNotBlank()) {
-                        val queueMode = if (spokenCursor == 0) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD
-                        ttsManager.speak(remaining, queueMode)
-                    }
-                }
-
-                val aiMessage = ChatMessage(
-                    sender = MessageSender.AI,
-                    text = finalMessageText
-                )
-
-                _uiState.update { state ->
-                    state.copy(
-                        aiReviewState = state.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = listOf(aiMessage),
-                            error = null
-                        )
-                    )
-                }
-            } catch (e: TimeoutCancellationException) {
-                android.util.Log.w("CDLViewModel", "AI Review timed out, using local Coach Mac debrief", e)
-                val fallbackText = if (targetResult != null) {
-                    aiReviewManager.generateLocalFallbackDebrief(targetResult)
-                } else {
-                    aiReviewManager.generateLocalGeneralGreeting()
-                }
-                val aiMessage = ChatMessage(sender = MessageSender.AI, text = fallbackText)
-                _uiState.update { state ->
-                    state.copy(
-                        aiReviewState = state.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = listOf(aiMessage),
-                            error = null
-                        )
-                    )
-                }
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                    ttsManager.speak(fallbackText, android.speech.tts.TextToSpeech.QUEUE_FLUSH)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                android.util.Log.e("CDLViewModel", "AI Review error, using local Coach Mac debrief", e)
-                val fallbackText = if (targetResult != null) {
-                    aiReviewManager.generateLocalFallbackDebrief(targetResult)
-                } else {
-                    aiReviewManager.generateLocalGeneralGreeting()
-                }
-                val aiMessage = ChatMessage(sender = MessageSender.AI, text = fallbackText)
-                _uiState.update { state ->
-                    state.copy(
-                        aiReviewState = state.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = listOf(aiMessage),
-                            error = null
-                        )
-                    )
-                }
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                    ttsManager.speak(fallbackText, android.speech.tts.TextToSpeech.QUEUE_FLUSH)
-                }
-            }
+        val profile = currentProfile()
+        val prompt = if (targetResult != null) {
+            aiReviewManager.createInitialReviewPrompt(targetResult, profile)
+        } else {
+            aiReviewManager.createGeneralTutorPrompt(profile)
         }
+        runCoachTurn(
+            displayMessages = emptyList(),
+            historyForModel = emptyList(),
+            prompt = prompt,
+            mode = CoachMode.DEBRIEF,
+            fallback = {
+                if (targetResult != null) aiReviewManager.generateLocalFallbackDebrief(targetResult)
+                else aiReviewManager.generateLocalGeneralGreeting()
+            }
+        )
     }
 
     fun startStepByStepMissedReview() {
@@ -672,19 +772,16 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
             val finishText = "Great work driver! You have gone over all ${state.missedQuestions.size} questions you missed on this exam. You're ready to ace your retest, or you can ask me anything else!"
             val userMsg = ChatMessage(sender = MessageSender.USER, text = "I'm ready for the next question.")
             val aiMsg = ChatMessage(sender = MessageSender.AI, text = finishText)
-            _uiState.update { s ->
-                s.copy(
-                    aiReviewState = s.aiReviewState.copy(
-                        isLoading = false,
-                        streamingText = "",
-                        currentMissedIndex = null,
-                        messages = s.aiReviewState.messages + userMsg + aiMsg
-                    )
+            updateAi {
+                it.copy(
+                    isLoading = false,
+                    streamingText = "",
+                    currentMissedIndex = null,
+                    error = null,
+                    messages = it.messages + userMsg + aiMsg
                 )
             }
-            if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                ttsManager.speak(finishText, android.speech.tts.TextToSpeech.QUEUE_FLUSH)
-            }
+            speakIfAuto(finishText)
         }
     }
 
@@ -701,120 +798,32 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         val missedList = state.missedQuestions
         val item = missedList.getOrNull(index) ?: return
 
-        ttsManager.stop()
-        aiJob?.cancel()
-
-        val prompt = aiReviewManager.createStepByStepPrompt(item, index, missedList.size)
         val userActionText = if (index == 0 && state.currentMissedIndex == null) {
             "Let's review each one of the questions that I missed step by step."
         } else {
-            "Review missed question ${index + 1} of ${missedList.size}: ${item.question.subtopic}"
+            "Review missed question ${index + 1} of ${missedList.size}: ${CoachKnowledge.cleanSubtopic(item.question.subtopic)}"
         }
         val userMsg = ChatMessage(sender = MessageSender.USER, text = userActionText)
-        val newMessages = state.messages + userMsg
 
-        _uiState.update { s ->
-            s.copy(
-                aiReviewState = s.aiReviewState.copy(
-                    isLoading = true,
-                    streamingText = "",
-                    currentMissedIndex = index,
-                    messages = newMessages,
-                    error = null
-                )
-            )
-        }
+        updateAi { it.copy(currentMissedIndex = index, quiz = null) }
 
-        aiJob = viewModelScope.launch {
-            try {
-                val fullResponse = StringBuilder()
-                var spokenCursor = 0
+        runCoachTurn(
+            displayMessages = state.messages + userMsg,
+            historyForModel = state.messages,
+            prompt = aiReviewManager.createStepByStepPrompt(item, index, missedList.size),
+            mode = CoachMode.DEBRIEF,
+            fallback = { aiReviewManager.generateLocalStepReview(item, index, missedList.size) }
+        )
+    }
 
-                aiReviewManager.streamResponse(newMessages, prompt).collect { chunk ->
-                    fullResponse.append(chunk)
-                    val currentText = fullResponse.toString()
+    private fun containsAny(text: String, words: List<String>): Boolean = words.any { text.contains(it) }
 
-                    _uiState.update { s ->
-                        s.copy(
-                            aiReviewState = s.aiReviewState.copy(
-                                isLoading = false,
-                                streamingText = currentText
-                            )
-                        )
-                    }
+    private val readyWords = listOf(
+        "ready", "next", "yes", "yep", "yeah", "sure", "continue", "go ahead", "move on", "another", "keep going"
+    )
 
-                    if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                        val unvoiced = currentText.substring(spokenCursor)
-                        val sentenceBoundaryRegex = Regex("""[.!?](\s+|\n+|$)""")
-                        val match = sentenceBoundaryRegex.find(unvoiced)
-                        if (match != null) {
-                            val sentenceEnd = match.range.last + 1
-                            val sentence = unvoiced.substring(0, sentenceEnd).trim()
-                            if (sentence.isNotBlank()) {
-                                val queueMode = if (spokenCursor == 0) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD
-                                ttsManager.speak(sentence, queueMode)
-                                spokenCursor += sentenceEnd
-                            }
-                        }
-                    }
-                }
-
-                val finalMessageText = fullResponse.toString().trim()
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled && spokenCursor < finalMessageText.length) {
-                    val remaining = finalMessageText.substring(spokenCursor).trim()
-                    if (remaining.isNotBlank()) {
-                        val queueMode = if (spokenCursor == 0) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD
-                        ttsManager.speak(remaining, queueMode)
-                    }
-                }
-
-                val aiMessage = ChatMessage(sender = MessageSender.AI, text = finalMessageText)
-                _uiState.update { s ->
-                    s.copy(
-                        aiReviewState = s.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = newMessages + aiMessage,
-                            error = null
-                        )
-                    )
-                }
-            } catch (e: TimeoutCancellationException) {
-                val fallback = aiReviewManager.generateLocalStepReview(item, index, missedList.size)
-                val aiMessage = ChatMessage(sender = MessageSender.AI, text = fallback)
-                _uiState.update { s ->
-                    s.copy(
-                        aiReviewState = s.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = newMessages + aiMessage,
-                            error = null
-                        )
-                    )
-                }
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                    ttsManager.speak(fallback, android.speech.tts.TextToSpeech.QUEUE_FLUSH)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                val fallback = aiReviewManager.generateLocalStepReview(item, index, missedList.size)
-                val aiMessage = ChatMessage(sender = MessageSender.AI, text = fallback)
-                _uiState.update { s ->
-                    s.copy(
-                        aiReviewState = s.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = newMessages + aiMessage,
-                            error = null
-                        )
-                    )
-                }
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                    ttsManager.speak(fallback, android.speech.tts.TextToSpeech.QUEUE_FLUSH)
-                }
-            }
-        }
+    private fun isReady(lower: String): Boolean {
+        return containsAny(lower, readyWords) || lower == "ok" || lower == "okay" || lower == "go"
     }
 
     fun sendUserChatMessage(userText: String) {
@@ -824,183 +833,338 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
         val state = _uiState.value.aiReviewState
         val lower = trimmed.lowercase()
 
-        // 1. Check if user wants to start or step through missed questions review
-        val isRequestingMissedReview = lower.contains("review each") ||
-                lower.contains("questions that i missed") ||
-                lower.contains("questions i missed") ||
-                lower.contains("wrong questions") ||
-                lower.contains("missed questions") ||
-                lower.contains("step by step") ||
-                lower.contains("go over each") ||
-                lower.contains("go over missed") ||
-                lower.contains("review the questions")
+        // A voice quiz in progress gets the first look at what the student said.
+        val quiz = state.quiz
+        if (quiz != null && handleQuizInput(trimmed, lower, quiz)) return
 
-        if (isRequestingMissedReview && state.missedQuestions.isNotEmpty()) {
-            val startIndex = state.currentMissedIndex ?: 0
-            reviewMissedQuestionAtIndex(startIndex)
+        // Starting a quiz.
+        if (containsAny(lower, listOf("quiz me", "quiz on", "start a quiz", "start quiz", "test me", "voice quiz", "give me a quiz"))) {
+            startQuiz(quizFocusFrom(lower), trimmed)
             return
         }
 
-        // 2. Check if currently in step-by-step review and user confirms readiness for the next question
-        val isReadyForNext = lower.contains("ready") ||
-                lower.contains("next") ||
-                lower.contains("yes") ||
-                lower.contains("yep") ||
-                lower.contains("yeah") ||
-                lower.contains("sure") ||
-                lower.contains("continue") ||
-                lower.contains("go ahead") ||
-                lower.contains("move on") ||
-                lower == "ok" || lower == "okay"
+        // A personal study plan.
+        if (containsAny(lower, listOf("study plan", "plan for me", "make me a plan", "what should i study", "how should i study"))) {
+            requestStudyPlan(trimmed)
+            return
+        }
 
-        if (state.currentMissedIndex != null && isReadyForNext) {
+        // Starting or stepping through the missed-question review.
+        val isRequestingMissedReview = containsAny(
+            lower,
+            listOf(
+                "review each", "questions that i missed", "questions i missed", "wrong questions",
+                "missed questions", "step by step", "go over each", "go over missed", "review the questions"
+            )
+        )
+        if (isRequestingMissedReview && state.missedQuestions.isNotEmpty()) {
+            reviewMissedQuestionAtIndex(state.currentMissedIndex ?: 0)
+            return
+        }
+        if (state.currentMissedIndex != null && isReady(lower)) {
             goToNextMissedQuestion()
+            return
+        }
+
+        // An open question, answered from the study bank.
+        val currentMissed = state.currentMissedIndex?.let { state.missedQuestions.getOrNull(it) }
+        val pinned = listOfNotNull(currentMissed?.question, state.quiz?.current)
+        val references = (pinned + CoachKnowledge.retrieve(retrievalQuery(trimmed, state.messages), limit = 4))
+            .distinctBy { it.questionText }
+            .take(5)
+
+        val prompt = aiReviewManager.createTutorPrompt(
+            userText = trimmed,
+            profile = currentProfile(),
+            references = CoachKnowledge.formatReferences(references),
+            currentMissed = currentMissed,
+            missedIndex = state.currentMissedIndex,
+            totalMissed = state.missedQuestions.size
+        )
+        val fallback: (() -> String)? = if (currentMissed != null) {
+            { aiReviewManager.offlineWithReference(currentMissed.question) }
+        } else {
+            null
+        }
+
+        runCoachTurn(
+            displayMessages = state.messages + ChatMessage(sender = MessageSender.USER, text = trimmed),
+            historyForModel = state.messages,
+            prompt = prompt,
+            mode = CoachMode.TUTOR,
+            fallback = fallback
+        )
+    }
+
+    /** Short follow-ups ("why?", "what about the trailer?") borrow words from the last few messages. */
+    private fun retrievalQuery(userText: String, history: List<ChatMessage>): String {
+        if (CoachKnowledge.tokenize(userText).size >= 3) return userText
+        val recent = history.takeLast(2).joinToString(" ") { it.text }
+        return "$userText $recent"
+    }
+
+    private fun quizFocusFrom(lower: String): QuizFocus = when {
+        containsAny(lower, listOf("pre-trip", "pre trip", "pretrip", "inspection")) -> QuizFocus.PRE_TRIP
+        containsAny(lower, listOf("air brake", "brakes")) -> QuizFocus.AIR_BRAKES
+        containsAny(lower, listOf("hazmat", "haz mat", "hazardous", "placard")) -> QuizFocus.HAZMAT
+        containsAny(lower, listOf("combination", "coupling", "doubles", "triples", "trailer")) -> QuizFocus.COMBINATION
+        containsAny(lower, listOf("general knowledge", "general")) -> QuizFocus.GENERAL
+        else -> QuizFocus.WEAK_AREAS
+    }
+
+    fun requestStudyPlan(userText: String = "Make me a study plan") {
+        val state = _uiState.value.aiReviewState
+        val missedIds = repository.missedQuestionsFlow.value
+        val weak = CoachKnowledge.weakAreas(repository.historyFlow.value, missedIds)
+        val references = CoachKnowledge.referencesForWeakAreas(weak, missedIds)
+        runCoachTurn(
+            displayMessages = state.messages + ChatMessage(sender = MessageSender.USER, text = userText),
+            historyForModel = state.messages,
+            prompt = aiReviewManager.createStudyPlanPrompt(
+                profile = currentProfile(),
+                references = CoachKnowledge.formatReferences(references),
+                userText = userText
+            ),
+            mode = CoachMode.PLAN
+        )
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Voice quiz: Coach Mac reads a study-bank question aloud, the student answers by voice, and
+    // the answer is graded against the bank (by letter or clear wording locally, otherwise by Gemini).
+    // ---------------------------------------------------------------------------------------------
+
+    fun startQuiz(focus: QuizFocus = QuizFocus.WEAK_AREAS, userText: String? = null) {
+        stopLiveVoice()
+        updateAi { it.copy(quiz = QuizState(focus = focus), currentMissedIndex = null, error = null) }
+        askNextQuizQuestion(userText)
+    }
+
+    fun nextQuizQuestion() {
+        askNextQuizQuestion("Next question")
+    }
+
+    private fun askNextQuizQuestion(userText: String?) {
+        val state = _uiState.value.aiReviewState
+        val quiz = state.quiz ?: return
+        val q = CoachKnowledge.pickQuizQuestion(
+            focus = quiz.focus,
+            history = repository.historyFlow.value,
+            missedIds = repository.missedQuestionsFlow.value,
+            askedIds = quiz.askedIds
+        )
+        if (q == null) {
+            endQuiz(userText)
             return
         }
 
         ttsManager.stop()
         aiJob?.cancel()
+        lastFailedRequest = null
 
-        val currentMissed = state.currentMissedIndex?.let { state.missedQuestions.getOrNull(it) }
+        val number = quiz.number + 1
+        val intro = if (quiz.number == 0) CoachKnowledge.quizIntro(quiz.focus) + "\n" else ""
+        val text = intro + CoachKnowledge.quizQuestionText(q, number)
+        val newMessages = state.messages +
+            listOfNotNull(userText?.let { ChatMessage(sender = MessageSender.USER, text = it) }) +
+            ChatMessage(sender = MessageSender.AI, text = text)
 
-        val userMessage = ChatMessage(sender = MessageSender.USER, text = trimmed)
-        val currentMessages = _uiState.value.aiReviewState.messages + userMessage
-
-        _uiState.update { s ->
-            s.copy(
-                aiReviewState = s.aiReviewState.copy(
-                    isLoading = true,
-                    streamingText = "",
-                    messages = currentMessages,
-                    error = null
+        updateAi {
+            it.copy(
+                isLoading = false,
+                streamingText = "",
+                error = null,
+                messages = newMessages,
+                quiz = quiz.copy(
+                    current = q,
+                    number = number,
+                    awaitingAnswer = true,
+                    askedIds = quiz.askedIds + q.id
                 )
             )
         }
+        speakIfAuto(text)
+    }
 
-        aiJob = viewModelScope.launch {
-            try {
-                val fullResponse = StringBuilder()
-                var spokenCursor = 0
+    /** Returns true when the quiz handled the message. */
+    private fun handleQuizInput(text: String, lower: String, quiz: QuizState): Boolean {
+        if (containsAny(lower, listOf("stop quiz", "end quiz", "end the quiz", "stop the quiz", "quit", "i'm done", "im done", "that's enough")) ||
+            lower == "stop" || lower == "done"
+        ) {
+            endQuiz(text)
+            return true
+        }
 
-                val promptToSend = if (currentMissed != null) {
-                    """
-                    The user is currently reviewing missed question ${(state.currentMissedIndex ?: 0) + 1} of ${state.missedQuestions.size}:
-                    - Topic: ${currentMissed.question.subtopic}
-                    - Question: "${currentMissed.question.questionText}"
-                    - Correct Answer: "${currentMissed.question.options.getOrElse(currentMissed.correctIndex) { "" }}"
-                    - Explanation: ${currentMissed.question.explanation}
-                    User Question / Comment: "$trimmed"
+        if (containsAny(lower, listOf("quiz me", "quiz on", "start a quiz", "start quiz", "new quiz"))) {
+            startQuiz(quizFocusFrom(lower), text)
+            return true
+        }
 
-                    Answer their specific question directly in under 55 words, and end by asking: "Are you ready to go to the next question that you missed?"
-                    """.trimIndent()
-                } else {
-                    trimmed
-                }
+        val q = quiz.current
+        if (quiz.awaitingAnswer && q != null) {
+            gradeQuizAnswer(text, lower, q)
+            return true
+        }
 
-                aiReviewManager.streamResponse(currentMessages, promptToSend).collect { chunk ->
-                    fullResponse.append(chunk)
-                    val currentText = fullResponse.toString()
+        if (isReady(lower) && text.length <= 40) {
+            askNextQuizQuestion(text)
+            return true
+        }
+        // Anything else is a follow-up question; answer it normally and keep the quiz going.
+        return false
+    }
 
-                    _uiState.update { s ->
-                        s.copy(
-                            aiReviewState = s.aiReviewState.copy(
-                                isLoading = false,
-                                streamingText = currentText
-                            )
-                        )
-                    }
+    private fun gradeQuizAnswer(answer: String, lower: String, q: Question) {
+        val state = _uiState.value.aiReviewState
+        val userMsg = ChatMessage(sender = MessageSender.USER, text = answer)
+        updateAi { s -> s.copy(quiz = s.quiz?.copy(awaitingAnswer = false)) }
 
-                    if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                        val unvoiced = currentText.substring(spokenCursor)
-                        val sentenceBoundaryRegex = Regex("""[.!?](\s+|\n+|$)""")
-                        val match = sentenceBoundaryRegex.find(unvoiced)
-                        if (match != null) {
-                            val sentenceEnd = match.range.last + 1
-                            val sentence = unvoiced.substring(0, sentenceEnd).trim()
-                            if (sentence.isNotBlank()) {
-                                val queueMode = if (spokenCursor == 0) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD
-                                ttsManager.speak(sentence, queueMode)
-                                spokenCursor += sentenceEnd
-                            }
-                        }
-                    }
-                }
-
-                val finalAiText = fullResponse.toString().trim()
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled && spokenCursor < finalAiText.length) {
-                    val remaining = finalAiText.substring(spokenCursor).trim()
-                    if (remaining.isNotBlank()) {
-                        val queueMode = if (spokenCursor == 0) android.speech.tts.TextToSpeech.QUEUE_FLUSH else android.speech.tts.TextToSpeech.QUEUE_ADD
-                        ttsManager.speak(remaining, queueMode)
-                    }
-                }
-
-                val aiMessage = ChatMessage(sender = MessageSender.AI, text = finalAiText)
-
-                _uiState.update { s ->
-                    s.copy(
-                        aiReviewState = s.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = currentMessages + aiMessage,
-                            error = null
-                        )
-                    )
-                }
-            } catch (e: TimeoutCancellationException) {
-                val fallbackAnswer = aiReviewManager.generateLocalChatFallback(
-                    userPrompt = trimmed,
-                    currentMissed = currentMissed,
-                    missedIndex = state.currentMissedIndex,
-                    totalMissed = state.missedQuestions.size
+        if (containsAny(lower, listOf("skip", "pass on this"))) {
+            ttsManager.stop()
+            aiJob?.cancel()
+            val feedback = CoachKnowledge.localQuizFeedback(q, correct = false)
+            updateAi {
+                it.copy(
+                    isLoading = false,
+                    streamingText = "",
+                    error = null,
+                    messages = state.messages + userMsg + ChatMessage(sender = MessageSender.AI, text = feedback)
                 )
-                val aiMessage = ChatMessage(sender = MessageSender.AI, text = fallbackAnswer)
-                _uiState.update { s ->
-                    s.copy(
-                        aiReviewState = s.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = currentMessages + aiMessage,
-                            error = null
-                        )
+            }
+            recordQuizAnswer(q, correct = false)
+            speakIfAuto(feedback)
+            return
+        }
+
+        val localVerdict = CoachKnowledge.gradeLocally(q, answer)
+        runCoachTurn(
+            displayMessages = state.messages + userMsg,
+            historyForModel = state.messages,
+            prompt = aiReviewManager.createQuizGradePrompt(q, answer, localVerdict),
+            mode = CoachMode.QUIZ_GRADE,
+            fallback = {
+                if (localVerdict != null) CoachKnowledge.localQuizFeedback(q, localVerdict)
+                else aiReviewManager.offlineQuizNotice(q)
+            },
+            onComplete = { reply, fromGemini ->
+                val verdict = localVerdict ?: if (fromGemini) AiReviewManager.parseVerdict(reply) else null
+                recordQuizAnswer(q, correct = verdict == true)
+            }
+        )
+    }
+
+    private fun recordQuizAnswer(q: Question, correct: Boolean) {
+        updateAi { s ->
+            val quiz = s.quiz
+            if (quiz == null || quiz.lastGradedId == q.id) {
+                s
+            } else {
+                s.copy(
+                    quiz = quiz.copy(
+                        answeredCount = quiz.answeredCount + 1,
+                        correctCount = quiz.correctCount + if (correct) 1 else 0,
+                        lastGradedId = q.id
                     )
-                }
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                    ttsManager.speak(fallbackAnswer, android.speech.tts.TextToSpeech.QUEUE_FLUSH)
-                }
+                )
+            }
+        }
+    }
+
+    fun endQuiz(userText: String? = "Stop the quiz") {
+        val state = _uiState.value.aiReviewState
+        val quiz = state.quiz ?: return
+        ttsManager.stop()
+        aiJob?.cancel()
+
+        val summary = if (quiz.answeredCount == 0) {
+            "Quiz stopped. Say quiz me whenever you want another round."
+        } else {
+            val percent = quiz.correctCount * 100 / quiz.answeredCount
+            val note = if (percent >= 80) {
+                "That's passing territory. Nice work, driver."
+            } else {
+                "Keep at it. Missed Questions mode on the home screen is a great way to lock these in."
+            }
+            "Quiz finished. You got ${quiz.correctCount} out of ${quiz.answeredCount} right, $percent percent. $note"
+        }
+        val newMessages = state.messages +
+            listOfNotNull(userText?.let { ChatMessage(sender = MessageSender.USER, text = it) }) +
+            ChatMessage(sender = MessageSender.AI, text = summary)
+        updateAi {
+            it.copy(isLoading = false, streamingText = "", error = null, messages = newMessages, quiz = null)
+        }
+        speakIfAuto(summary)
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Live voice: a hands-free, natural-voice conversation through the Gemini Live API.
+    // ---------------------------------------------------------------------------------------------
+
+    /** Call only once the RECORD_AUDIO permission has been granted. */
+    fun startLiveVoice() {
+        val status = _uiState.value.aiReviewState.liveStatus
+        if (status == LiveVoiceStatus.CONNECTING || status == LiveVoiceStatus.LIVE) return
+
+        ttsManager.stop()
+        aiJob?.cancel()
+        updateAi { it.copy(liveStatus = LiveVoiceStatus.CONNECTING, liveError = null, isLoading = false, streamingText = "") }
+
+        val missedIds = repository.missedQuestionsFlow.value
+        val weak = CoachKnowledge.weakAreas(repository.historyFlow.value, missedIds, limit = 4)
+        val missedQuestions = missedIds.mapNotNull { CDLQuestionRepository.getQuestionById(it) }.take(10)
+        val examMissed = _uiState.value.aiReviewState.missedQuestions.map { it.question }
+        val references = (examMissed + missedQuestions + CoachKnowledge.referencesForWeakAreas(weak, missedIds, perArea = 2))
+            .distinctBy { it.questionText }
+            .take(16)
+        val instruction = aiReviewManager.createLiveSystemInstruction(
+            profile = currentProfile(),
+            references = CoachKnowledge.formatReferences(references)
+        )
+
+        liveJob?.cancel()
+        liveJob = viewModelScope.launch {
+            try {
+                liveVoice.start(instruction)
+                updateAi { it.copy(liveStatus = LiveVoiceStatus.LIVE) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.e("CDLViewModel", "AI chat error, using local Coach Mac fallback", e)
-                val fallbackAnswer = aiReviewManager.generateLocalChatFallback(
-                    userPrompt = trimmed,
-                    currentMissed = currentMissed,
-                    missedIndex = state.currentMissedIndex,
-                    totalMissed = state.missedQuestions.size
-                )
-                val aiMessage = ChatMessage(sender = MessageSender.AI, text = fallbackAnswer)
-                _uiState.update { s ->
-                    s.copy(
-                        aiReviewState = s.aiReviewState.copy(
-                            isLoading = false,
-                            streamingText = "",
-                            messages = currentMessages + aiMessage,
-                            error = null
-                        )
+                Log.e("CDLViewModel", "Live voice failed to start", e)
+                runCatching { liveVoice.stop() }
+                updateAi {
+                    it.copy(
+                        liveStatus = LiveVoiceStatus.ERROR,
+                        liveError = "Live voice isn't available right now. Coach Mac's regular voice and chat still work."
                     )
-                }
-                if (_uiState.value.aiReviewState.isAutoSpeechEnabled) {
-                    ttsManager.speak(fallbackAnswer, android.speech.tts.TextToSpeech.QUEUE_FLUSH)
                 }
             }
         }
     }
 
+    fun stopLiveVoice() {
+        val status = _uiState.value.aiReviewState.liveStatus
+        liveJob?.cancel()
+        liveJob = null
+        if (liveVoice.isActive) {
+            liveVoice.stopNow()
+            viewModelScope.launch { runCatching { liveVoice.stop() } }
+        }
+        if (status != LiveVoiceStatus.OFF) {
+            updateAi { it.copy(liveStatus = LiveVoiceStatus.OFF, liveError = null) }
+        }
+    }
+
+    fun dismissLiveError() {
+        updateAi { it.copy(liveStatus = LiveVoiceStatus.OFF, liveError = null) }
+    }
+
     fun speakMessage(text: String) {
+        suppressSpeechThisTurn = false
         ttsManager.speak(text)
     }
 
     fun stopSpeaking() {
+        suppressSpeechThisTurn = true
         ttsManager.stop()
     }
 
@@ -1027,6 +1191,7 @@ class CDLViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         stopTimer()
+        liveVoice.stopNow()
         ttsManager.shutdown()
     }
 }
