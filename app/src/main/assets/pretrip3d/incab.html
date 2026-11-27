@@ -84,13 +84,35 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
 .miss.ok{border-left-color:var(--ok)}
 .auto{background:rgba(198,47,47,.14);border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin:8px 0;font-weight:600}
 .clock{font:700 30px/1 "Barlow Condensed",sans-serif;text-align:center;margin:8px 0}
-.help{border:1px solid var(--yellow);background:var(--sel);border-radius:10px;padding:4px 14px 14px;margin-top:12px}
-.help h2{margin-top:10px}.help h3{font:600 14px/1.2 Barlow,sans-serif;color:var(--muted);margin:12px 0 4px}
-.help p,.help li{font-size:15px;line-height:1.45}.help ol{margin:0 0 8px;padding-left:20px}.help li{margin-bottom:4px}
+/* interactive tutorial */
+.tut{position:fixed;right:0;bottom:0;width:420px;z-index:20;background:var(--asphalt);color:#fff;border-top:5px solid var(--yellow);padding:10px 16px 14px;box-shadow:0 -6px 24px rgba(0,0,0,.35);max-height:46vh;overflow-y:auto}
+.tut .tutTop{display:flex;justify-content:space-between;align-items:center;gap:8px;font:600 13px/1.2 Barlow,sans-serif;color:#cfd6db;letter-spacing:.02em}
+.tut .tutTop button{min-height:36px;padding:4px 12px;background:transparent;color:#fff;border-color:#5b656c;font-size:14px}
+.tut .tutBar{height:5px;background:#3a4248;border-radius:3px;overflow:hidden;margin:6px 0 8px}
+.tut .tutBar i{display:block;height:100%;background:var(--yellow);transition:width .3s}
+.tut #tutText{font:700 21px/1.2 "Barlow Condensed",sans-serif;margin:0 0 4px}
+.tut #tutHint{font-size:15px;line-height:1.4;color:#d9dfe3;margin:0}
+.tut #tutHint:empty{display:none}
+.tut #tutLive{margin:6px 0 0;font:700 17px/1.2 Barlow,sans-serif;color:var(--yellow)}
+.tut .row{margin-top:10px}
+.tut #tutOk{background:var(--yellow);color:#1b1b1b;border-color:var(--yellow);font-weight:700;min-width:120px}
+.tut.nice #tutText{color:#7ee2a2}
+.tut-on aside{padding-bottom:calc(var(--tutH,170px) + 20px)}
+body.tut-on #aRun button:not(.tut-ok){opacity:.3;pointer-events:none}
+.tut-target{position:relative;scroll-margin-top:12px;scroll-margin-bottom:calc(var(--tutH,170px) + 14px);outline:3px solid var(--yellow);outline-offset:3px;animation:tutPulse 1.2s ease-in-out infinite;border-radius:8px}
+button.tut-target{background:var(--sel)}
+button.tut-target::after{content:"TAP";position:absolute;top:-11px;right:-8px;background:#c62f2f;color:#fff;font:700 11px/1 Barlow,sans-serif;padding:4px 7px;border-radius:10px;letter-spacing:.05em}
+.opts.tut-target{padding:6px}
+#hud.tut-target{outline:none;animation:none}
+#hud.tut-target div{animation:tutPulse 1.2s ease-in-out infinite;outline:3px solid var(--yellow)}
+#aClock.tut-target{padding:6px}
+@keyframes tutPulse{0%,100%{box-shadow:0 0 0 0 rgba(242,183,5,.85)}50%{box-shadow:0 0 0 10px rgba(242,183,5,0)}}
 @media(max-width:860px){
   html,body{height:auto;min-height:100%}body{display:block}main{display:block}
   #view{position:sticky;top:0;z-index:1;height:max(300px,44vh);min-height:300px}
   aside{border-left:0;border-top:1px solid var(--line);overflow:visible}
+  .tut{width:auto;left:0}
+  .tut-target{scroll-margin-top:calc(max(300px,44vh) + 14px)}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -140,31 +162,8 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
       <div id="aSetup">
         <h2>Air brake check, hands-on</h2>
         <p class="lead">Do the whole check yourself with the truck's real controls: start the engine, build air to governor cut-out, run the one-minute leak test, fan the brakes down to the low-air warning and the spring brakes, then the parking and service brake checks. The gauges move like the real thing. On the California test, getting the air brake check wrong is an automatic failure.</p>
-        <div class="row"><button class="primary" id="aStart" type="button">Start the air brake check</button><button id="aHelpBtn" type="button" aria-pressed="false">Help</button></div>
-      </div>
-      <div id="aHelp" class="help" hidden>
-        <h2>How to do the air brake check</h2>
-        <h3>The controls</h3>
-        <p><b>Key on / start, Start engine, Engine off (key on):</b> one button that turns the key. With the engine running it shuts the engine off but leaves the key on, which is what the leak and warning tests need.</p>
-        <p><b>Fast idle:</b> raises the engine speed so air builds faster. Only works with the engine running.</p>
-        <p><b>Yellow (parking brake) and Red (trailer air supply):</b> tap to push a knob in (release) or pull it out (apply). You can't push them in below about 65 psi.</p>
-        <p><b>Press &amp; hold brake:</b> holds the foot brake down until you tap it again. <b>Pump brake (fan):</b> one quick press and release; tap it over and over to fan the air down.</p>
-        <p><b>Speed up time 4×:</b> makes waiting for air and the one-minute leak test go 4 times faster. The numbers stay the same.</p>
-        <p>The two boxes at the bottom of the 3D view show the primary and secondary air pressure. They turn red when the low-air warning is on.</p>
-        <h3>The steps</h3>
-        <ol>
-          <li><b>Set up:</b> both knobs out, then tap Key on / start. Watch every dash light come on and go out.</li>
-          <li><b>Governor cut-out:</b> tap Fast idle and wait. When the air stops climbing and you hear the "pssht", the governor cut out (about 125 psi; California: 120 to 140).</li>
-          <li><b>Leak test:</b> tap Engine off (key on), push in Yellow and Red, then Press &amp; hold brake. After the needle settles, a one-minute clock starts. A combination can lose no more than 4 psi.</li>
-          <li><b>Low-air warning:</b> tap Release brake, then tap Pump brake again and again. The LOW AIR light and buzzer must come on before 55 psi.</li>
-          <li><b>Spring brakes:</b> keep pumping. The red knob pops out, then the yellow, between 20 and 45 psi.</li>
-          <li><b>Rebuild air:</b> start the engine and build back to 100 psi or more.</li>
-          <li><b>Tractor parking brake:</b> Yellow out, Red in, then "Gently pull forward". The truck should hold.</li>
-          <li><b>Trailer parking brake:</b> Yellow in, Red out, then "Gently pull forward". The trailer should hold.</li>
-          <li><b>Service brake:</b> both knobs in, then "Pull forward at 5 mph and brake". It should stop straight.</li>
-        </ol>
-        <p>After each part, answer the question to show you know the rule. The yellow box tells you what to do next and turns green when it's done. On the real test you must also say each step out loud; use the "What to say" lines.</p>
-        <button id="aHelpClose" type="button">Close help</button>
+        <p class="lead"><b>First time?</b> Tap <b>Help: show me how</b>. It walks you through every step, one tap at a time.</p>
+        <div class="row"><button class="primary" id="aHelpBtn" type="button">Help: show me how</button><button id="aStart" type="button">Start on my own</button></div>
       </div>
       <div id="aRun" hidden>
         <div class="prog"><span id="aProg"></span><span id="aPart"></span></div>
@@ -174,7 +173,7 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
         <div id="aClock" class="clock" hidden></div>
         <div class="ctl" id="aCtl"></div>
         <div class="row" style="margin-top:12px">
-          <button id="aHelpBtn2" type="button" aria-pressed="false">Help</button>
+          <button id="aHelpBtn2" type="button">Help: show me</button>
           <button id="aFast" type="button" aria-pressed="false">Speed up time 4×</button>
           <button id="aNext" type="button" disabled>Next step</button>
           <button id="aQuit" type="button">Stop</button>
@@ -209,6 +208,14 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
     <p class="note">Based on the California DMV Commercial Driver's License Handbook (Section 11M, Vehicle Inspection Test) for a Class A tractor-trailer with air brakes. Always use your own truck manufacturer's numbers when they differ.</p>
   </aside>
 </main>
+<div id="tut" class="tut" hidden role="dialog" aria-label="Air brake check tutorial">
+  <div class="tutTop"><span id="tutProg">Tutorial</span><button id="tutExit" type="button">Exit tutorial</button></div>
+  <div class="tutBar"><i id="tutBar" style="width:0%"></i></div>
+  <p id="tutText" aria-live="polite"></p>
+  <p id="tutHint"></p>
+  <p id="tutLive" hidden></p>
+  <div class="row" id="tutOkRow"><button id="tutOk" type="button">Got it</button></div>
+</div>
 <script>
 (function () {
   "use strict";
@@ -843,7 +850,6 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
       say: "\"Pulling forward at 5 miles per hour and applying the service brake firmly. No pulling to either side, no delay.\"" },
   ];
   function startAir() {
-    toggleHelp(false);
     resetSim(); A.on = true; A.i = 0; A.leakResult = null; A.leakStart = null; A.tug = null; A.svc = false; A.answered = false;
     hudShown = true; S.p = 72; S.s = 70;
     $("aSetup").hidden = true; $("aDone").hidden = true; $("aRun").hidden = false; showAir();
@@ -917,25 +923,176 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
     if (A._done !== wasDone) renderAirBody();
   });
   $("aStart").addEventListener("click", startAir);
-  function toggleHelp(show) {
-    const h = $("aHelp"), on = show === undefined ? h.hidden : show;
-    h.hidden = !on;
-    for (const id of ["aHelpBtn", "aHelpBtn2"]) { $(id).setAttribute("aria-pressed", String(on)); $(id).textContent = on ? "Hide help" : "Help"; }
-    if (on && h.scrollIntoView) h.scrollIntoView({ block: "start", behavior: "smooth" });
+  // =============================================================================================
+  // Interactive tutorial (Help): one action at a time; the button to press flashes, the rest are locked
+  // =============================================================================================
+  const evt = (type) => () => S.events.some((e) => e.type === type);
+  const nx = (air, text) => ({ air, target: "next", look: null, text: text || "Done! Read the WHAT TO SAY line out loud, the way you would for the examiner. Then tap “Next step”.", hint: "", until: () => A.i > air || !A.on });
+  const ans = (air, text, hint) => ({ air, target: "opts", text, hint: hint || "Tap the answer you think is right. You'll see right away if you got it.", until: () => A.answered });
+  const TUT = [
+    // Setup
+    { air: 0, info: true, look: "driver", text: "Welcome! I'll walk you through the whole air brake check, one tap at a time.",
+      hint: "Just tap the button that is flashing yellow with the red TAP tag. Everything else is grayed out so you can't get lost. Tap Exit tutorial any time to finish on your own." },
+    { air: 0, info: true, target: "hud", look: "air_primary", text: "These two boxes are your air gauges.",
+      hint: "Primary and Secondary air pressure, in psi (pounds per square inch). Right now the air is low, about 70 psi. They also show on the round gauges on the dash." },
+    { air: 0, info: true, look: "park_check", text: "These two knobs are the brakes.",
+      hint: "Yellow (diamond) = the truck's parking brake. Red (octagon) = the trailer air supply. Pulled OUT means the brakes are ON. Both start OUT." },
+    { air: 0, target: "c:key", look: "cluster", text: "Tap “Key on / start” to start the engine.",
+      hint: "Watch the dash: every warning light flashes on for a moment, then goes out. That's the bulb check.", until: () => S.engine },
+    nx(0, "The engine is running, and the yellow task box turned green. Green means the step is done. Tap “Next step”."),
+    // Part 1: governor cut-out
+    { air: 1, target: "c:idle", look: "air_primary", text: "Part 1: Governor cut-out. Tap “Fast idle”.",
+      hint: "A higher engine speed makes the air compressor fill the tanks faster.", until: () => S.fastIdle },
+    { air: 1, target: "hud", look: "air_primary", speed: 4, text: "Now just watch the air numbers climb.",
+      hint: "At about 125 psi you'll hear a loud “pssht” and the numbers stop going up. That's the governor cutting out. Time is sped up 4× so you don't wait long.", until: evt("cutOut"),
+      live: () => `Air now: ${Math.round(Math.max(S.p, S.s))} psi. Waiting for about 125.` },
+    ans(1, "Pssht! The governor cut out. Now answer the question in the panel."),
+    nx(1),
+    // Part 2: leak test
+    { air: 2, target: "c:key", look: "ignition", text: "Part 2: Leak test. Tap “Engine off (key on)”.",
+      hint: "The engine stops, but the key stays on so the gauges and warning lights keep working.", until: () => !S.engine },
+    { air: 2, target: "c:yellow", look: "park_brake_valve", text: "Tap the Yellow knob to push it IN.",
+      hint: "That releases the truck's parking brake.", until: () => !S.yellowOut },
+    { air: 2, target: "c:red", look: "trailer_air_supply", text: "Tap the Red knob to push it IN.",
+      hint: "That sends air to the trailer and releases the trailer brakes.", until: () => !S.redOut },
+    { air: 2, target: "c:pedal", look: "brake_pedal", text: "Tap “Press & hold brake”.",
+      hint: "Your foot pushes the brake pedal all the way down and keeps holding it.", until: () => S.pedal },
+    { air: 2, target: "clock", look: "air_primary", speed: 4, text: "Keep holding. Watch the clock.",
+      hint: "First the needle settles, then a one-minute clock runs and counts how many psi you lose. A truck and trailer may lose no more than 4 psi. Time is sped up 4×.", until: () => A.leakResult != null },
+    ans(2, "The minute is up. Is that leak OK? Answer in the panel."),
+    nx(2),
+    // Part 3: low-air warning
+    { air: 3, target: "c:pedal", look: "brake_pedal", text: "Part 3: Low-air warning. Tap “Release brake”.",
+      hint: "Take your foot off the pedal.", until: () => !S.pedal },
+    { air: 3, target: "c:pump", look: "cluster", text: "Now fan the brakes: tap “Pump brake (fan)” over and over.",
+      hint: "Each tap uses up some air. Keep tapping (about 12 times) until the red LOW AIR light comes on and the buzzer sounds.", until: evt("warn"),
+      live: () => `Air now: ${Math.round(minAir())} psi. Keep tapping!` },
+    ans(3, "There's the LOW AIR light and buzzer! Answer the question in the panel."),
+    nx(3),
+    // Part 4: spring brakes
+    { air: 4, target: "c:pump", look: "park_check", text: "Part 4: Spring brakes. Keep tapping “Pump brake (fan)”.",
+      hint: "Watch the knobs. When the air gets low enough they pop OUT by themselves: red first, then yellow, somewhere between 45 and 20 psi.",
+      until: () => evt("redPop")() && evt("yellowPop")(),
+      live: () => `Air now: ${Math.round(minAir())} psi. Red: ${S.redOut ? "POPPED OUT" : "in"}. Yellow: ${S.yellowOut ? "POPPED OUT" : "in"}.` },
+    ans(4, "Both knobs popped out. Answer the question in the panel."),
+    nx(4),
+    // Rebuild
+    { air: 5, target: "c:key", look: "air_primary", text: "Now build the air back up. Tap “Start engine”.", hint: "", until: () => S.engine },
+    { air: 5, target: "c:idle", look: "air_primary", text: "Tap “Fast idle”.", hint: "", until: () => S.fastIdle || minAir() >= 100 },
+    { air: 5, target: "hud", look: "air_primary", speed: 4, text: "Wait until both air numbers reach 100 psi.",
+      hint: "You need good air pressure before you can release the brakes. Time is sped up 4×.", until: () => minAir() >= 100,
+      live: () => `Air now: ${Math.round(minAir())} psi.` },
+    nx(5, "Air is back up. Tap “Next step”."),
+    // Tractor parking brake
+    { air: 6, target: "c:yellow", look: "park_brake_valve", text: "Tap Yellow to pull it OUT.", hint: "That sets the truck's parking brake.", until: () => S.yellowOut },
+    { air: 6, target: "c:red", look: "trailer_air_supply", text: "Tractor parking brake check. Tap Red to push it IN.",
+      hint: "The yellow knob is OUT, so only the truck's parking brake is on. Pushing red IN releases the trailer brakes.", until: () => !S.redOut },
+    { air: 6, target: "c:tug", look: "driver", text: "Tap “Gently pull forward in low gear”.",
+      hint: "The truck should NOT move. The tractor's parking brake alone has to hold it.", until: () => A.tug === "tractor" },
+    nx(6),
+    // Trailer parking brake
+    { air: 7, target: "c:yellow", look: "park_brake_valve", text: "Trailer parking brake check. Tap Yellow to push it IN.",
+      hint: "That releases the truck's parking brake.", until: () => !S.yellowOut },
+    { air: 7, target: "c:red", look: "trailer_air_supply", text: "Tap Red to pull it OUT.", hint: "That sets the trailer brakes.", until: () => S.redOut },
+    { air: 7, target: "c:tug", look: "driver", text: "Tap “Gently pull forward in low gear” again.",
+      hint: "This time the trailer brakes alone must hold the whole rig. It also proves the trailer is coupled.", until: () => A.tug === "trailer" },
+    nx(7),
+    // Service brake
+    { air: 8, target: "c:yellow", look: "park_brake_valve", text: "Tap Yellow to push it IN.", hint: "", until: () => !S.yellowOut },
+    { air: 8, target: "c:red", look: "trailer_air_supply", text: "Service brake check. Tap Red to push it IN.",
+      hint: "Now every brake is released.", until: () => !S.redOut },
+    { air: 8, target: "c:svc", look: "speedo", text: "Tap “Pull forward at 5 mph and brake”.",
+      hint: "Watch the speedometer: the truck rolls up to 5 mph, then you brake firmly. It should stop straight, with no pulling to either side.", until: () => A.svc === true },
+    nx(8, "That's the whole air brake check! Read the WHAT TO SAY line, then tap “Finish”."),
+  ];
+  const TU = { on: false, i: 0, el: null, nice: 0, scroll: false };
+  function tutTargetEl(t) {
+    if (!t) return null;
+    if (t.startsWith("c:")) return $("aCtl").querySelector(`[data-c="${t.slice(2)}"]`);
+    if (t === "next") return $("aNext").disabled ? null : $("aNext");
+    if (t === "opts") return $("aBody").querySelector(".opts");
+    if (t === "clock") return $("aClock").hidden ? null : $("aClock");
+    if (t === "hud") return $("hud");
+    return null;
   }
-  $("aHelpBtn").addEventListener("click", () => toggleHelp());
-  $("aHelpBtn2").addEventListener("click", () => toggleHelp());
-  $("aHelpClose").addEventListener("click", () => toggleHelp(false));
+  function tutClearTarget() {
+    for (const e of document.querySelectorAll(".tut-target, .tut-ok")) e.classList.remove("tut-target", "tut-ok");
+    TU.el = null;
+  }
+  function tutSize() { document.documentElement.style.setProperty("--tutH", $("tut").offsetHeight + "px"); }
+  function tutEnter(i) {
+    // skip steps that belong to an earlier part, or that are already done
+    while (i < TUT.length && (TUT[i].air < A.i || (!TUT[i].info && TUT[i].until()))) i++;
+    if (i >= TUT.length) { endTut(); return; }
+    TU.i = i; TU.nice = 0; TU.scroll = true;
+    const st = TUT[i];
+    $("tut").classList.remove("nice");
+    $("tutProg").textContent = `Tutorial · ${AIR_STEPS[A.i].part}`;
+    $("tutBar").style.width = `${(100 * (i + 1)) / TUT.length}%`;
+    $("tutText").textContent = st.text; $("tutHint").textContent = st.hint || "";
+    TU.liveTxt = ""; $("tutLive").textContent = ""; $("tutLive").hidden = !st.live;
+    $("tutOkRow").hidden = !st.info;
+    S.timeScale = st.speed || 1; $("aFast").setAttribute("aria-pressed", String(S.timeScale > 1));
+    if (st.look) look(st.look);
+    tutClearTarget();
+    tutSize();
+    if (st.info) setTimeout(() => { if (TU.on && TU.i === i) $("tutOk").focus({ preventScroll: true }); }, 50);
+  }
+  function startTut() {
+    if (!A.on) startAir();
+    TU.on = true;
+    document.body.classList.add("tut-on");
+    $("tut").hidden = false;
+    tutEnter(0);
+  }
+  function endTut() {
+    if (!TU.on) return;
+    TU.on = false;
+    tutClearTarget();
+    document.body.classList.remove("tut-on");
+    $("tut").hidden = true;
+    S.timeScale = 1; $("aFast").setAttribute("aria-pressed", "false");
+  }
+  uiTickers.push((dt) => {
+    if (!TU.on) return;
+    if (!A.on) { endTut(); return; }
+    const st = TUT[TU.i];
+    if (TU.nice > 0) { TU.nice -= dt; if (TU.nice <= 0) tutEnter(TU.i + 1); return; }
+    if (st.air < A.i) { tutEnter(TU.i + 1); return; }
+    // keep the flashing target on the right element (the panel re-renders)
+    const el = tutTargetEl(st.target);
+    if (el !== TU.el || (el && !el.classList.contains("tut-target"))) {
+      tutClearTarget();
+      if (el) {
+        TU.el = el; el.classList.add("tut-target");
+        if (el.tagName === "BUTTON") el.classList.add("tut-ok"); else for (const b of el.querySelectorAll("button")) b.classList.add("tut-ok");
+        if (TU.scroll && el.id !== "hud" && el.scrollIntoView) { TU.scroll = false; el.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+      }
+    }
+    if (st.live) { const t = st.live(); if (t !== TU.liveTxt) { TU.liveTxt = t; $("tutLive").textContent = t; } }
+    if (!st.info && st.until()) {
+      tutClearTarget();
+      const last = TU.i >= TUT.length - 1;
+      if (!last) { $("tut").classList.add("nice"); $("tutText").textContent = "✓ Nice!"; $("tutHint").textContent = ""; $("tutLive").hidden = true; TU.nice = 0.8; tutSize(); }
+    }
+  });
+  $("tutOk").addEventListener("click", () => { if (TU.on && TUT[TU.i].info) tutEnter(TU.i + 1); });
+  $("tutExit").addEventListener("click", () => { endTut(); toast("Tutorial closed. Keep going on your own."); });
+  window.addEventListener("resize", () => { if (TU.on) tutSize(); });
+  $("aHelpBtn").addEventListener("click", startTut);
+  $("aHelpBtn2").addEventListener("click", startTut);
   $("aNext").addEventListener("click", () => { if (A.i < AIR_STEPS.length - 1) { A.i++; A._done = undefined; showAir(); } else finishAir(); });
-  $("aQuit").addEventListener("click", () => { A.on = false; callout(""); hudShown = false; $("aRun").hidden = true; $("aSetup").hidden = false; look("driver"); });
+  $("aQuit").addEventListener("click", () => { endTut(); A.on = false; callout(""); hudShown = false; $("aRun").hidden = true; $("aSetup").hidden = false; look("driver"); });
   $("aFast").addEventListener("click", () => { const on = S.timeScale === 1; S.timeScale = on ? 4 : 1; $("aFast").setAttribute("aria-pressed", String(on)); });
   function finishAir() {
+    const wasTut = TU.on; endTut();
     A.on = false; callout(""); hudShown = false; S.timeScale = 1; $("aFast").setAttribute("aria-pressed", "false");
     $("aRun").hidden = true; $("aDone").hidden = false;
-    $("aDone").innerHTML = `<h2>Air brake check done</h2><p class="lead">You did all four parts of the air brake check plus the parking and service brake checks. On the test you'll have to explain each one out loud while you do it.</p>
+    $("aDone").innerHTML = wasTut ? `<h2>Tutorial complete!</h2><p class="lead">You just did the whole air brake check: governor cut-out, leak test, low-air warning, spring brakes, then the parking and service brake checks. Now try it on your own without help, then take the test.</p>
+      <div class="row"><button class="primary" type="button" id="aAgain">Try it on my own</button><button type="button" id="aTutAgain">Do the tutorial again</button><button type="button" id="aGoTest">Take the test</button></div>` : `<h2>Air brake check done</h2><p class="lead">You did all four parts of the air brake check plus the parking and service brake checks. On the test you'll have to explain each one out loud while you do it.</p>
       <div class="row"><button class="primary" type="button" id="aGoTest">Take the test</button><button type="button" id="aAgain">Practice again</button></div>`;
   }
-  $("aDone").addEventListener("click", (e) => { if (e.target.id === "aGoTest") setMode("test"); if (e.target.id === "aAgain") startAir(); });
+  $("aDone").addEventListener("click", (e) => { if (e.target.id === "aGoTest") setMode("test"); if (e.target.id === "aAgain") startAir(); if (e.target.id === "aTutAgain") { startAir(); startTut(); } });
 
   // =============================================================================================
   // TEST tab
@@ -1070,6 +1227,7 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
   let mode = "learn";
   function setMode(m) {
     if (m === mode) return;
+    endTut();
     L.on = false; A.on = false; T.on = false; hudShown = false; callout(""); S.timeScale = 1;
     $("lRun").hidden = true; $("lSetup").hidden = false; $("aRun").hidden = true; $("aSetup").hidden = false; $("tRun").hidden = true; $("tSetup").hidden = false;
     $("lDone").hidden = true; $("aDone").hidden = true; $("tDone").hidden = true;
@@ -1083,7 +1241,7 @@ button.primary{background:var(--asphalt);color:#fff;border-color:var(--asphalt);
   $("tabTest").addEventListener("click", () => setMode("test"));
 
   // automated testing only: incab.html?debug speeds up the simulation clock
-  if (/[?&]debug\b/.test(location.search)) window.__incab = { S, SP: () => SP, fast: (k) => { DEBUG_SCALE = k; } };
+  if (/[?&]debug\b/.test(location.search)) window.__incab = { S, SP: () => SP, fast: (k) => { DEBUG_SCALE = k; }, tut: () => ({ on: TU.on, i: TU.i, n: TUT.length, air: A.i, target: TUT[TU.i] && TUT[TU.i].target, text: $("tutText").textContent }) };
   // let the app open a specific tab: incab.html#air or #test
   const h = (location.hash || "").replace("#", "");
   if (h === "air" || h === "test") setTimeout(() => setMode(h), 0);
